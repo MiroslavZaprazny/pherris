@@ -13,7 +13,13 @@ struct Backend {
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
-        Ok(InitializeResult::default())
+        Ok(InitializeResult {
+            capabilities: ServerCapabilities {
+                definition_provider: Some(OneOf::Left(true)),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
     }
 
     async fn initialized(&self, _: InitializedParams) {
@@ -26,8 +32,7 @@ impl LanguageServer for Backend {
         &self,
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
-        debug!("hi");
-        let _ = params;
+        debug!("Goto definition params: {:?}", params);
         let url = Url::parse("/Users/miroslavzaprazny/workspace/service").expect("to parse url");
         let range = Range::new(Position::new(0, 0), Position::new(0,0));
         let location = Location::new(url, range);
