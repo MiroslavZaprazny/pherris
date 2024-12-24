@@ -1,13 +1,15 @@
 use crate::tree::utils::{
-    get_node_for_point, get_point_from_position, get_position_from_point, print_tree,
+    find_nearest_location, get_node_for_point, get_point_from_position, get_position_from_point,
+    print_tree,
 };
 use dashmap::DashMap;
-use streaming_iterator::StreamingIterator;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
 use tracing::debug;
-use tree_sitter::{Query, QueryCursor, Tree};
+use tree_sitter::{Query, Tree};
+
+use super::utils::get_variable_location_for_query;
 
 #[derive(Debug)]
 pub struct Backend {
@@ -115,43 +117,35 @@ impl Backend {
         uri: &Url,
         tree: &tree_sitter::Tree,
     ) -> Option<Location> {
-        // let var_query = Query::new(&tree_sitter_php::LANGUAGE_PHP.into(),
-        //     "(name) @variable").ok()?;
-        let declare_query = Query::new(
+        let var_declare_query = Query::new(
             &tree_sitter_php::LANGUAGE_PHP.into(),
             "(assignment_expression left: (variable_name) @declaration)",
         )
-        .ok()?;
+        .expect("to create variable declaration query");
 
-        // let mut var_cursor = QueryCursor::new();
-        let mut declare_cursor = QueryCursor::new();
+        let var_param_query = Query::new(
+            &tree_sitter_php::LANGUAGE_PHP.into(),
+            "(simple_parameter (variable_name) @declaration)",
+        )
+        .expect("to create parameter query");
 
-        // let mut var_matches = var_cursor.matches(&var_query, *current_node, document.as_bytes());
-        // while let Some(var_match) = var_matches.next() {
-        // for var_capture in var_match.captures {
-        let var_name = current_node.utf8_text(document.as_bytes()).ok()?;
+        let var_name = current_node
+            .utf8_text(document.as_bytes())
+            .expect("to get current variable name");
+        let mut locations: Vec<Location> = vec![];
 
-        let mut declare_matches =
-            declare_cursor.matches(&declare_query, tree.root_node(), document.as_bytes());
-        while let Some(declare_match) = declare_matches.next() {
-            for declare_capture in declare_match.captures {
-                let declare_var_name = declare_capture
-                    .node
-                    .utf8_text(document.as_bytes())
-                    .ok()?
-                    .trim_start_matches("$");
-
-                if declare_var_name == var_name {
-                    let range = Range::new(
-                        get_position_from_point(&declare_capture.node.start_position()),
-                        get_position_from_point(&declare_capture.node.end_position()),
-                    );
-                    return Some(Location::new(uri.clone(), range));
-                }
-            }
+        if let Some(location) = get_variable_location_for_query(var_name, &var_declare_query, tree, document, uri) {
+            locations.push(location);
         }
-        // }
-        // }
-        None
+
+        if let Some(location) = get_variable_location_for_query(var_name, &var_param_query, tree, document, uri) {
+            locations.push(location);
+        }
+        debug!("Locations: {:?}", locations);
+
+        find_nearest_location(
+            get_position_from_point(&current_node.start_position()),
+            locations,
+        )
     }
 }
