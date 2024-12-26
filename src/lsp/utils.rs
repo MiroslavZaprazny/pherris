@@ -5,13 +5,14 @@ use tree_sitter::{Query, QueryCursor, Tree};
 
 use crate::tree::utils::get_position_from_point;
 
-pub fn get_variable_location_for_query(
+pub fn get_variable_locations_for_query(
     var_name: &str,
     query: &Query,
     tree: &Tree,
     document: &str,
     uri: &Url,
-) -> Option<Location> {
+) -> Vec<Location> {
+    let mut out = Vec::new();
     let mut cursor = QueryCursor::new();
 
     let mut matches = cursor.matches(&query, tree.root_node(), document.as_bytes());
@@ -22,7 +23,7 @@ pub fn get_variable_location_for_query(
             let declare_var_name = capture
                 .node
                 .utf8_text(document.as_bytes())
-                .ok()?
+                .expect("a text")
                 .trim_start_matches("$");
 
             if declare_var_name == var_name {
@@ -31,10 +32,10 @@ pub fn get_variable_location_for_query(
                     get_position_from_point(&capture.node.end_position()),
                 );
 
-                return Some(Location::new(uri.clone(), range));
+                out.push(Location::new(uri.clone(), range))
             }
         }
     }
 
-    None
+    out
 }

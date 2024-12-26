@@ -9,7 +9,7 @@ use tower_lsp::{Client, LanguageServer};
 use tracing::debug;
 use tree_sitter::{Query, Tree};
 
-use super::utils::get_variable_location_for_query;
+use super::utils::get_variable_locations_for_query;
 
 #[derive(Debug)]
 pub struct Backend {
@@ -117,6 +117,13 @@ impl Backend {
         uri: &Url,
         tree: &tree_sitter::Tree,
     ) -> Option<Location> {
+        // not sure if this is the correct approach
+        // we try to find every occurence of the variable name
+        // and then we pick the closest location to our current node
+        // maybe we should just look at the scope where the current node
+        // is located and based on that determine where the variable name is declared
+        // but this kinda works so fuck it
+
         let var_declare_query = Query::new(
             &tree_sitter_php::LANGUAGE_PHP.into(),
             "(assignment_expression left: (variable_name) @declaration)",
@@ -134,13 +141,20 @@ impl Backend {
             .expect("to get current variable name");
         let mut locations: Vec<Location> = vec![];
 
-        if let Some(location) = get_variable_location_for_query(var_name, &var_declare_query, tree, document, uri) {
-            locations.push(location);
-        }
-
-        if let Some(location) = get_variable_location_for_query(var_name, &var_param_query, tree, document, uri) {
-            locations.push(location);
-        }
+        locations.append(&mut get_variable_locations_for_query(
+            var_name,
+            &var_declare_query,
+            tree,
+            document,
+            uri,
+        ));
+        locations.append(&mut get_variable_locations_for_query(
+            var_name,
+            &var_param_query,
+            tree,
+            document,
+            uri,
+        ));
         debug!("Locations: {:?}", locations);
 
         find_nearest_location(
