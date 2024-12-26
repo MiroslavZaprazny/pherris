@@ -1,26 +1,33 @@
-use crate::tree::utils::{
-    find_nearest_location, get_node_for_point, get_point_from_position, get_position_from_point,
-    print_tree,
-};
+use std::path::PathBuf;
+use crate::tree::utils::*;
+use crate::tree::class::ClassDefinition;
 use dashmap::DashMap;
+use streaming_iterator::StreamingIterator;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
 use tracing::debug;
-use tree_sitter::{Query, Tree};
+use tree_sitter::{Query, Tree, QueryCursor};
+use walkdir::WalkDir;
 
 use super::utils::get_variable_locations_for_query;
 
-#[derive(Debug)]
 pub struct Backend {
     pub client: Client,
     pub ast_map: DashMap<Url, Tree>,
     pub document_map: DashMap<Url, String>,
+    pub class_index: DashMap<String, ClassDefinition>,
 }
 
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
-    async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
+    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+
+        // maybe we should find it if its not in the params?
+        if let Some(root_uri) = params.root_uri {
+            let _ = self.index_workspace(PathBuf::from(root_uri.path())).await;
+        }
+
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Options(
@@ -162,4 +169,54 @@ impl Backend {
             locations,
         )
     }
+
+    async fn index_workspace(&self, dir: PathBuf) -> Result<()> {
+        let lang = tree_sitter_php::LANGUAGE_PHP;
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(&lang.into()).expect("to set lang");
+
+        for entry in WalkDir::new(&dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map_or(false, |ext| ext == "php"))
+        {
+            let path = entry.path();
+            let content = tokio::fs::read_to_string(path).await.expect("to read file");
+            let tree = parser.parse(&content, None).expect("to parse tree");
+            let uri = Url::from_file_path(path).unwrap();
+            self.update_index(&uri, &tree);
+        }
+        Ok(())
+    }
+
+    fn update_index(&self, uri: &Url, tree: &Tree) {
+        let class_def_query = Query::new(
+            &tree_sitter_php::LANGUAGE_PHP.into(),
+            "(class_declaration 
+                name: (name) @class_name
+                (namespace_definition)? @namespace)"
+        ).unwrap();
+        let document = self.document_map.get(uri).expect("to get document");
+
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(&class_def_query, tree.root_node(), document.as_bytes());
+
+        //meh
+        while let Some(match_) = matches.next() {
+            let class_node = match_.captures[0].node;
+            let namespace_node = match_.captures.get(1).map(|c| c.node);
+
+            if namespace_node.is_some() {
+                let class_name = class_node.utf8_text(document.as_bytes()).ok().map(String::from).unwrap();
+                let namespace = namespace_node.unwrap().utf8_text(document.as_bytes()).unwrap();
+
+                self.class_index.insert(format!("{}\\{}", namespace, class_name), ClassDefinition {
+                    uri: uri.clone(),
+                    namespace: Some(String::from(namespace)),
+                });
+            }
+            
+        }
+    }
 }
+

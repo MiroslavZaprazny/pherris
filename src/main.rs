@@ -26,5 +26,6 @@ async fn main() {
         ast_map: DashMap::default(),
         document_map: DashMap::default(),
     });
+
     Server::new(stdin, stdout, socket).serve(service).await;
 }
