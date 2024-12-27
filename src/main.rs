@@ -25,6 +25,7 @@ async fn main() {
         client,
         ast_map: DashMap::default(),
         document_map: DashMap::default(),
+        class_index: DashMap::default(),
     });
 
     Server::new(stdin, stdout, socket).serve(service).await;
