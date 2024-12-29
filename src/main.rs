@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+
 use dashmap::DashMap;
 use pherris::lsp::lsp::Backend;
 use tower_lsp::{LspService, Server};
@@ -25,6 +27,7 @@ async fn main() {
         client,
         ast_map: DashMap::default(),
         document_map: DashMap::default(),
+        root_path: Mutex::new(String::new()),
     });
     Server::new(stdin, stdout, socket).serve(service).await;
 }

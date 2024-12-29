@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::sync::Mutex;
+
 use crate::tree::utils::{
     find_nearest_location, get_node_for_point, get_point_from_position, get_position_from_point,
     print_tree,
@@ -16,11 +19,18 @@ pub struct Backend {
     pub client: Client,
     pub ast_map: DashMap<Url, Tree>,
     pub document_map: DashMap<Url, String>,
+    pub root_path: Mutex<String>,
 }
 
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
-    async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
+    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        if let Some(root_uri) = params.root_uri {
+            if let Ok(mut root_path) = self.root_path.lock() {
+                *root_path = String::from(root_uri.path());
+            }
+        }
+
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Options(
@@ -65,9 +75,14 @@ impl LanguageServer for Backend {
 
         let current_point = get_point_from_position(&params.text_document_position_params.position);
         let current_node = get_node_for_point(&tree, current_point).expect("to get node");
+        debug!("Current node: {:?}", current_node.kind());
+        let parent = current_node
+            .parent()
+            .expect("to get parent of current node");
+        debug!("Parent node: {:?}", parent.kind());
 
-        match current_node.kind() {
-            "name" => {
+        match parent.kind() {
+            "variable_name" => {
                 let location = self
                     .find_variable_declaration(
                         &current_node,
@@ -76,6 +91,13 @@ impl LanguageServer for Backend {
                         &tree,
                     )
                     .expect("to find variable declaration");
+
+                return Ok(Some(GotoDefinitionResponse::Scalar(location)));
+            }
+            "named_type" => {
+                let location = self
+                    .find_class_definition()
+                    .expect("to find class definition");
 
                 return Ok(Some(GotoDefinitionResponse::Scalar(location)));
             }
@@ -110,6 +132,34 @@ impl LanguageServer for Backend {
 }
 
 impl Backend {
+    fn find_class_definition(&self) -> Option<Location> {
+        let _class_map = self.get_autoload_class_map();
+        None
+    }
+
+    // returns Namespace\Class -> src/class.php
+    fn get_autoload_class_map(&self) -> HashMap<String, String> {
+        let root_path = self
+            .root_path
+            .lock()
+            .ok()
+            .map(|root_path| root_path.clone())
+            .expect("to get root path");
+        let autoload_classmap_path = format!("{}/vendor/composer/autoload_classmap.php", root_path);
+        debug!("Path: {:?}", autoload_classmap_path);
+        let contents = std::fs::read_to_string(autoload_classmap_path).expect("to read file");
+        debug!("Contents: {:?}", contents);
+
+        let lang = tree_sitter_php::LANGUAGE_PHP;
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(&lang.into()).expect("to set lang");
+
+        let tree = parser.parse(contents, None).expect("to parse file");
+        print_tree(&tree);
+
+        HashMap::default()
+    }
+
     fn find_variable_declaration(
         &self,
         current_node: &tree_sitter::Node,
