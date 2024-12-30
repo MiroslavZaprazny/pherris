@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Mutex;
 
 use crate::tree::utils::{
@@ -6,11 +5,12 @@ use crate::tree::utils::{
     print_tree,
 };
 use dashmap::DashMap;
+use streaming_iterator::StreamingIterator;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
 use tracing::debug;
-use tree_sitter::{Query, Tree};
+use tree_sitter::{Query, QueryCursor, Tree};
 
 use super::utils::get_variable_locations_for_query;
 
@@ -20,6 +20,7 @@ pub struct Backend {
     pub ast_map: DashMap<Url, Tree>,
     pub document_map: DashMap<Url, String>,
     pub root_path: Mutex<String>,
+    pub class_map: DashMap<String, String>,
 }
 
 #[tower_lsp::async_trait]
@@ -96,7 +97,7 @@ impl LanguageServer for Backend {
             }
             "named_type" => {
                 let location = self
-                    .find_class_definition()
+                    .find_class_definition(&current_node, &document, &tree)
                     .expect("to find class definition");
 
                 return Ok(Some(GotoDefinitionResponse::Scalar(location)));
@@ -124,6 +125,8 @@ impl LanguageServer for Backend {
         self.ast_map.insert(params.text_document.uri.clone(), tree);
         self.document_map
             .insert(params.text_document.uri, params.text_document.text);
+
+        self.load_autoload_class_map();
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -132,13 +135,99 @@ impl LanguageServer for Backend {
 }
 
 impl Backend {
-    fn find_class_definition(&self) -> Option<Location> {
-        let _class_map = self.get_autoload_class_map();
+    fn find_class_definition(
+        &self,
+        current_node: &tree_sitter::Node,
+        document: &str,
+        tree: &Tree,
+    ) -> Option<Location> {
+        let class_name = current_node
+            .utf8_text(document.as_bytes())
+            .expect("to get class name");
+        let query = Query::new(
+            &tree_sitter_php::LANGUAGE_PHP.into(),
+            "(namespace_use_clause
+                (qualified_name) @namespace)
+            ",
+        )
+        .expect("to create query");
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(&query, tree.root_node(), document.as_bytes());
+
+        while let Some(match_) = matches.next() {
+            for capture in match_.captures {
+                let fqn = capture
+                    .node
+                    .utf8_text(document.as_bytes())
+                    .expect("to get use statement");
+                debug!("FQN: {}", fqn);
+                debug!("class_name: {}", class_name);
+
+                if fqn.ends_with(format!("\\{}", class_name).as_str()) {
+                    debug!("found: {}", fqn);
+                    let location = self.get_class_declaration_location(fqn, class_name);
+
+                    if location.is_some() {
+                        return Some(location.unwrap());
+                    }
+                }
+            }
+        }
+
+        //if there is no use statement try searching the current directory for the class
+
+        None
+    }
+
+    fn get_class_declaration_location(&self, fqn: &str, class_name: &str) -> Option<Location> {
+        let path = self
+            .class_map
+            .get(fqn)
+            .expect("to get file for class")
+            .to_owned();
+        let content = std::fs::read_to_string(path.clone()).expect("to read destination file");
+
+        let lang = tree_sitter_php::LANGUAGE_PHP;
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(&lang.into()).expect("to set lang");
+
+        let tree = parser.parse(content.clone(), None).expect("to parse file");
+        print_tree(&tree);
+
+        let query = Query::new(
+            &tree_sitter_php::LANGUAGE_PHP.into(),
+            "(class_declaration
+                (name) @class_name)
+            ",
+        )
+        .expect("to create query");
+
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(&query, tree.root_node(), content.as_bytes());
+
+        while let Some(match_) = matches.next() {
+            for capture in match_.captures {
+                let node = capture.node;
+                let node_text = node
+                    .utf8_text(content.as_bytes())
+                    .expect("to get class name");
+                if node_text == class_name {
+                    return Some(Location::new(
+                        Url::from_file_path(&path).unwrap(),
+                        Range::new(
+                            get_position_from_point(&node.start_position()),
+                            get_position_from_point(&node.end_position()),
+                        ),
+                    ));
+                }
+            }
+        }
+
         None
     }
 
     // returns Namespace\Class -> src/class.php
-    fn get_autoload_class_map(&self) -> HashMap<String, String> {
+    fn load_autoload_class_map(&self) {
         let root_path = self
             .root_path
             .lock()
@@ -146,18 +235,74 @@ impl Backend {
             .map(|root_path| root_path.clone())
             .expect("to get root path");
         let autoload_classmap_path = format!("{}/vendor/composer/autoload_classmap.php", root_path);
+        let vendor_path = format!("{}/vendor", root_path);
+
         debug!("Path: {:?}", autoload_classmap_path);
-        let contents = std::fs::read_to_string(autoload_classmap_path).expect("to read file");
-        debug!("Contents: {:?}", contents);
+        let contents = std::fs::read(autoload_classmap_path).expect("to read file");
 
         let lang = tree_sitter_php::LANGUAGE_PHP;
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(&lang.into()).expect("to set lang");
 
-        let tree = parser.parse(contents, None).expect("to parse file");
-        print_tree(&tree);
+        let tree = parser.parse(contents.clone(), None).expect("to parse file");
+        let query = Query::new(
+            &tree_sitter_php::LANGUAGE_PHP.into(),
+            r#"
+            (array_creation_expression 
+                (array_element_initializer
+                    (string) @namespace
+                    (binary_expression
+                        (variable_name) @dir 
+                        "." 
+            (string) @path)))
+        "#,
+        )
+        .expect("to create query");
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(&query, tree.root_node(), contents.as_slice());
 
-        HashMap::default()
+        while let Some(match_) = matches.next() {
+            let mut namespace = None;
+            let mut path = None;
+            let mut dir = None;
+
+            for capture in match_.captures {
+                let node = capture.node;
+                let text = &contents[node.byte_range()];
+
+                match query.capture_names()[capture.index as usize] {
+                    "namespace" => namespace = Some(text),
+                    "dir" => dir = Some(text),
+                    "path" => path = Some(text),
+                    _ => {}
+                }
+            }
+
+            if let (Some(key_bytes), Some(base_dir_bytes), Some(path_bytes)) =
+                (namespace, dir, path)
+            {
+                if let (Ok(key_string), Ok(base_dir_string), Ok(path_string)) = (
+                    String::from_utf8(key_bytes.to_vec()),
+                    String::from_utf8(base_dir_bytes.to_vec()),
+                    String::from_utf8(path_bytes.to_vec()),
+                ) {
+                    let path_string = path_string.trim_matches('\'').to_string();
+                    let full_path = match base_dir_string.as_str() {
+                        "$vendorDir" => format!("{}{}", vendor_path, path_string),
+                        "$baseDir" => format!("{}{}", root_path, path_string),
+                        _ => path_string,
+                    };
+
+                    let namespace = key_string
+                        .trim_matches('\'')
+                        .replace("\\\\", "\\")
+                        .to_string();
+                    let full_path = full_path.to_string();
+                    debug!("Namespace: {} => path: {}", namespace, full_path);
+                    self.class_map.insert(namespace, full_path);
+                }
+            }
+        }
     }
 
     fn find_variable_declaration(

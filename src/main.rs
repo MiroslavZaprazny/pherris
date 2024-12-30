@@ -28,6 +28,7 @@ async fn main() {
         ast_map: DashMap::default(),
         document_map: DashMap::default(),
         root_path: Mutex::new(String::new()),
+        class_map: DashMap::default(),
     });
     Server::new(stdin, stdout, socket).serve(service).await;
 }
