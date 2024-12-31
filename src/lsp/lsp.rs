@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use crate::tree::utils::{
@@ -97,7 +98,12 @@ impl LanguageServer for Backend {
             }
             "named_type" => {
                 let location = self
-                    .find_class_definition(&current_node, &document, &tree)
+                    .find_class_definition(
+                        &current_node,
+                        &document,
+                        &tree,
+                        &params.text_document_position_params.text_document.uri,
+                    )
                     .expect("to find class definition");
 
                 return Ok(Some(GotoDefinitionResponse::Scalar(location)));
@@ -140,10 +146,12 @@ impl Backend {
         current_node: &tree_sitter::Node,
         document: &str,
         tree: &Tree,
+        current_uri: &Url,
     ) -> Option<Location> {
         let class_name = current_node
             .utf8_text(document.as_bytes())
             .expect("to get class name");
+
         let query = Query::new(
             &tree_sitter_php::LANGUAGE_PHP.into(),
             "(namespace_use_clause
@@ -154,18 +162,33 @@ impl Backend {
         let mut cursor = QueryCursor::new();
         let mut matches = cursor.matches(&query, tree.root_node(), document.as_bytes());
 
+        let file_path = current_uri.to_file_path().unwrap();
+        let current_dir = file_path.parent().unwrap();
+        debug!("Current directory, {:?}", current_dir);
+
         while let Some(match_) = matches.next() {
             for capture in match_.captures {
                 let fqn = capture
                     .node
                     .utf8_text(document.as_bytes())
                     .expect("to get use statement");
+
                 debug!("FQN: {}", fqn);
                 debug!("class_name: {}", class_name);
 
+                let path = self.class_map.get(fqn);
+
+                if path.is_none() {
+                    continue;
+                }
+
                 if fqn.ends_with(format!("\\{}", class_name).as_str()) {
                     debug!("found: {}", fqn);
-                    let location = self.get_class_declaration_location(fqn, class_name);
+                    let path = path.unwrap();
+                    let location = self.get_class_declaration_location(
+                        &PathBuf::from(&path.to_owned()),
+                        class_name,
+                    );
 
                     if location.is_some() {
                         return Some(location.unwrap());
@@ -175,17 +198,36 @@ impl Backend {
         }
 
         //if there is no use statement try searching the current directory for the class
+        // TODO: maybe instead of searching all of the files we could assume that
+        // it would live at current_dir/class_name?
+        let files = std::fs::read_dir(current_dir).expect("to read files");
+        for entry in files {
+            if entry.is_err() {
+                continue;
+            }
+            let entry = entry.unwrap();
+            let path = entry.path();
+
+            // we dont care about nested directories since the class would
+            // have to been defined by a use statement which is handled above
+            if path.is_dir() {
+                continue;
+            }
+
+            if let Some(location) = self.get_class_declaration_location(&path, class_name) {
+                return Some(location);
+            }
+        }
 
         None
     }
 
-    fn get_class_declaration_location(&self, fqn: &str, class_name: &str) -> Option<Location> {
-        let path = self
-            .class_map
-            .get(fqn)
-            .expect("to get file for class")
-            .to_owned();
-        let content = std::fs::read_to_string(path.clone()).expect("to read destination file");
+    fn get_class_declaration_location(&self, path: &PathBuf, class_name: &str) -> Option<Location> {
+        if path.is_dir() {
+            return None;
+        }
+
+        let content = std::fs::read_to_string(path).expect("to read destination file");
 
         let lang = tree_sitter_php::LANGUAGE_PHP;
         let mut parser = tree_sitter::Parser::new();
@@ -298,7 +340,7 @@ impl Backend {
                         .replace("\\\\", "\\")
                         .to_string();
                     let full_path = full_path.to_string();
-                    debug!("Namespace: {} => path: {}", namespace, full_path);
+                    // debug!("Namespace: {} => path: {}", namespace, full_path);
                     self.class_map.insert(namespace, full_path);
                 }
             }
