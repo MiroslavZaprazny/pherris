@@ -24,7 +24,7 @@ async fn main() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
     let (service, socket) = LspService::new(|client| Backend {
-        client,
+        // client,
         ast_map: DashMap::default(),
         document_map: DashMap::default(),
         root_path: Mutex::new(String::new()),
