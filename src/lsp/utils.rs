@@ -3,7 +3,7 @@ use tower_lsp::lsp_types::{Location, Range, Url};
 use tracing::debug;
 use tree_sitter::{Query, QueryCursor, Tree};
 
-use crate::tree::utils::get_position_from_point;
+use crate::analyzer::utils::get_position_from_point;
 
 pub fn get_variable_locations_for_query(
     var_name: &str,

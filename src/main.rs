@@ -1,7 +1,7 @@
-use std::sync::Mutex;
-
-use dashmap::DashMap;
+use pherris::analyzer::parser::Parser;
 use pherris::lsp::lsp::Backend;
+use pherris::lsp::state::State;
+use std::sync::RwLock;
 use tower_lsp::{LspService, Server};
 use tracing::debug;
 use tracing::level_filters::LevelFilter;
@@ -23,12 +23,9 @@ async fn main() {
     debug!("Starting lsp server");
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
-    let (service, socket) = LspService::new(|client| Backend {
-        // client,
-        ast_map: DashMap::default(),
-        document_map: DashMap::default(),
-        root_path: Mutex::new(String::new()),
-        class_map: DashMap::default(),
+    let (service, socket) = LspService::new(|_| Backend {
+        parser: RwLock::new(Parser::new().unwrap()),
+        state: State::new(),
     });
     Server::new(stdin, stdout, socket).serve(service).await;
 }
