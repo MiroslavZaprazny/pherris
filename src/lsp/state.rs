@@ -12,12 +12,17 @@ pub struct State {
 }
 
 impl State {
-    pub fn new() -> Self {
+    pub fn new(
+        ast_map: DashMap<Url, Tree>,
+        document_map: DashMap<Url, String>,
+        root_path: RwLock<String>,
+        class_map: DashMap<String, String>,
+    ) -> Self {
         Self {
-            ast_map: DashMap::default(),
-            document_map: DashMap::default(),
-            root_path: RwLock::new(String::new()),
-            class_map: DashMap::default(),
+            ast_map,
+            document_map,
+            root_path,
+            class_map,
         }
     }
 }
