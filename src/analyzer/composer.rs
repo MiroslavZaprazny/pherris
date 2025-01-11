@@ -119,10 +119,10 @@ mod tests {
 
         expected_map.insert(
             String::from("MyApplicationNamespace\\Testing\\Class"),
-            String::from(format!(
+            format!(
                 "{}/src/testing/Class.php",
                 temp_dir_path.to_str().unwrap()
-            )),
+            ),
         );
 
         prepare_autload_file(temp_dir_path);
@@ -135,7 +135,7 @@ mod tests {
 
         load_autoload_class_map(&RwLock::new(Parser::new().unwrap()), &state);
 
-        assert_eq!(state.class_map.is_empty(), false);
+        assert!(!state.class_map.is_empty());
         assert_eq!(state.class_map.iter().count(), 3);
 
         for (key, val) in state.class_map.into_iter() {

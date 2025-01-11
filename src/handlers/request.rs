@@ -50,7 +50,7 @@ pub fn handle_go_to_definition(
             )
             .expect("to find variable declaration");
 
-            return Some(GotoDefinitionResponse::Scalar(location));
+            Some(GotoDefinitionResponse::Scalar(location))
         }
         "named_type" => {
             let location = find_class_definition(
@@ -63,9 +63,9 @@ pub fn handle_go_to_definition(
             )
             .expect("to find class definition");
 
-            return Some(GotoDefinitionResponse::Scalar(location));
+            Some(GotoDefinitionResponse::Scalar(location))
         }
-        _ => return None,
+        _ => None,
     }
 }
 
@@ -122,8 +122,8 @@ fn find_class_definition(
                     parser,
                 );
 
-                if location.is_some() {
-                    return Some(location.unwrap());
+                if let Some(location) = location {
+                    return Some(location);
                 }
             }
         }
@@ -192,7 +192,7 @@ fn get_class_declaration_location(
                 .expect("to get class name");
             if node_text == class_name {
                 return Some(Location::new(
-                    Url::from_file_path(&path).unwrap(),
+                    Url::from_file_path(path).unwrap(),
                     tower_lsp::lsp_types::Range::new(
                         get_position_from_point(&node.start_position()),
                         get_position_from_point(&node.end_position()),

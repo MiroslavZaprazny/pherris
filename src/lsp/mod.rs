@@ -1,3 +1,3 @@
-pub mod lsp;
+pub mod backend;
 pub mod state;
 pub mod utils;

@@ -1,6 +1,6 @@
 use dashmap::DashMap;
 use pherris::analyzer::parser::Parser;
-use pherris::lsp::lsp::Backend;
+use pherris::lsp::backend::Backend;
 use pherris::lsp::state::State;
 use std::sync::RwLock;
 use tower_lsp::{LspService, Server};

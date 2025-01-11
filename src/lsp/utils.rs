@@ -15,7 +15,7 @@ pub fn get_variable_locations_for_query(
     let mut out = Vec::new();
     let mut cursor = QueryCursor::new();
 
-    let mut matches = cursor.matches(&query, tree.root_node(), document.as_bytes());
+    let mut matches = cursor.matches(query, tree.root_node(), document.as_bytes());
 
     while let Some(match_) = matches.next() {
         debug!("Match {:?}", match_);
@@ -24,7 +24,7 @@ pub fn get_variable_locations_for_query(
                 .node
                 .utf8_text(document.as_bytes())
                 .expect("a text")
-                .trim_start_matches("$");
+                .trim_start_matches('$');
 
             if declare_var_name == var_name {
                 let range = Range::new(
