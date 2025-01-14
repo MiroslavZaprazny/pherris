@@ -8,12 +8,15 @@ use tree_sitter::{Node, Query, QueryCursor, Tree};
 use crate::{
     analyzer::{
         parser::Parser,
+        query::{
+            class_decleration_query, namespace_use_query, param_query, variable_decleration_query,
+        },
         utils::{
             find_nearest_location, get_node_for_point, get_point_from_position,
             get_position_from_point, print_tree,
         },
     },
-    lsp::{state::State, utils::get_variable_locations_for_query},
+    lsp::state::State,
 };
 
 pub fn handle_go_to_definition(
@@ -33,12 +36,10 @@ pub fn handle_go_to_definition(
 
     let current_point = get_point_from_position(&params.text_document_position_params.position);
     let current_node = get_node_for_point(&tree, current_point).expect("to get node");
-    debug!("Current node: {:?}", current_node.kind());
 
     let parent = current_node
         .parent()
         .expect("to get parent of current node");
-    debug!("Parent node: {:?}", parent.kind());
 
     match parent.kind() {
         "variable_name" => {
@@ -83,13 +84,7 @@ fn find_class_definition(
         .utf8_text(document.as_bytes())
         .expect("to get class name");
 
-    let query = Query::new(
-        &tree_sitter_php::LANGUAGE_PHP.into(),
-        "(namespace_use_clause
-            (qualified_name) @namespace)
-        ",
-    )
-    .expect("to create query");
+    let query = namespace_use_query().expect("to create query");
     let mut cursor = QueryCursor::new();
     let mut matches = cursor.matches(&query, tree.root_node(), document.as_bytes());
 
@@ -173,14 +168,7 @@ fn get_class_declaration_location(
         .expect("to parse file");
     print_tree(&tree);
 
-    let query = Query::new(
-        &tree_sitter_php::LANGUAGE_PHP.into(),
-        "(class_declaration
-            (name) @class_name)
-        ",
-    )
-    .expect("to create query");
-
+    let query = class_decleration_query().expect("to create query");
     let mut cursor = QueryCursor::new();
     let mut matches = cursor.matches(&query, tree.root_node(), content.as_bytes());
 
@@ -218,31 +206,23 @@ fn find_variable_declaration(
     // is located and based on that determine where the variable name is declared
     // but this kinda works so fuck it
 
-    let var_declare_query = Query::new(
-        &tree_sitter_php::LANGUAGE_PHP.into(),
-        "(assignment_expression left: (variable_name) @declaration)",
-    )
-    .expect("to create variable declaration query");
-
-    let var_param_query = Query::new(
-        &tree_sitter_php::LANGUAGE_PHP.into(),
-        "(simple_parameter (variable_name) @declaration)",
-    )
-    .expect("to create parameter query");
+    let var_declare_query =
+        variable_decleration_query().expect("to create variable declaration query");
+    let var_param_query = param_query().expect("to create parameter query");
 
     let var_name = current_node
         .utf8_text(document.as_bytes())
         .expect("to get current variable name");
     let mut locations: Vec<Location> = vec![];
 
-    locations.append(&mut get_variable_locations_for_query(
+    locations.append(&mut match_variable_locations_for_query(
         var_name,
         &var_declare_query,
         tree,
         document,
         uri,
     ));
-    locations.append(&mut get_variable_locations_for_query(
+    locations.append(&mut match_variable_locations_for_query(
         var_name,
         &var_param_query,
         tree,
@@ -255,4 +235,38 @@ fn find_variable_declaration(
         get_position_from_point(&current_node.start_position()),
         locations,
     )
+}
+
+fn match_variable_locations_for_query(
+    var_name: &str,
+    query: &Query,
+    tree: &Tree,
+    document: &str,
+    uri: &Url,
+) -> Vec<Location> {
+    let mut out = Vec::new();
+    let mut cursor = QueryCursor::new();
+
+    let mut matches = cursor.matches(query, tree.root_node(), document.as_bytes());
+
+    while let Some(match_) = matches.next() {
+        for capture in match_.captures {
+            let declare_var_name = capture
+                .node
+                .utf8_text(document.as_bytes())
+                .expect("a text")
+                .trim_start_matches('$');
+
+            if declare_var_name == var_name {
+                let range = tower_lsp::lsp_types::Range::new(
+                    get_position_from_point(&capture.node.start_position()),
+                    get_position_from_point(&capture.node.end_position()),
+                );
+
+                out.push(Location::new(uri.clone(), range))
+            }
+        }
+    }
+
+    out
 }

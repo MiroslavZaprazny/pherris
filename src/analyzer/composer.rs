@@ -119,10 +119,7 @@ mod tests {
 
         expected_map.insert(
             String::from("MyApplicationNamespace\\Testing\\Class"),
-            format!(
-                "{}/src/testing/Class.php",
-                temp_dir_path.to_str().unwrap()
-            ),
+            format!("{}/src/testing/Class.php", temp_dir_path.to_str().unwrap()),
         );
 
         prepare_autload_file(temp_dir_path);
