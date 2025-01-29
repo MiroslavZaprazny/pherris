@@ -47,7 +47,12 @@ impl LanguageServer for Backend {
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
         debug!("Goto definition params: {:?}", params);
-        Ok(handle_go_to_definition(&params, &self.state, &self.parser))
+        Ok(handle_go_to_definition(
+            &params.text_document_position_params.text_document.uri,
+            &params.text_document_position_params.position,
+            &self.state,
+            &self.parser,
+        ))
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {

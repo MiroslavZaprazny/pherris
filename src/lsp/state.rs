@@ -11,6 +11,17 @@ pub struct State {
     pub class_map: DashMap<String, String>,
 }
 
+impl Default for State {
+    fn default() -> Self {
+        State::new(
+            DashMap::default(),
+            DashMap::default(),
+            RwLock::new(String::from("")),
+            DashMap::default(),
+        )
+    }
+}
+
 impl State {
     pub fn new(
         ast_map: DashMap<Url, Tree>,

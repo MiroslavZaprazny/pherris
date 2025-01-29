@@ -1,7 +1,7 @@
 use std::{path::PathBuf, sync::RwLock};
 
 use streaming_iterator::StreamingIterator;
-use tower_lsp::lsp_types::{GotoDefinitionParams, GotoDefinitionResponse, Location, Url};
+use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, Url};
 use tracing::debug;
 use tree_sitter::{Node, Query, QueryCursor, Tree};
 
@@ -20,21 +20,16 @@ use crate::{
 };
 
 pub fn handle_go_to_definition(
-    params: &GotoDefinitionParams,
+    uri: &Url,
+    position: &Position,
     state: &State,
     parser: &RwLock<Parser>,
 ) -> Option<GotoDefinitionResponse> {
-    let tree = state
-        .ast_map
-        .get(&params.text_document_position_params.text_document.uri)
-        .expect("to get the tree");
+    let tree = state.ast_map.get(uri).expect("to get the tree");
 
-    let document = state
-        .document_map
-        .get(&params.text_document_position_params.text_document.uri)
-        .expect("to get the document");
+    let document = state.document_map.get(uri).expect("to get the document");
 
-    let current_point = get_point_from_position(&params.text_document_position_params.position);
+    let current_point = get_point_from_position(position);
     let current_node = get_node_for_point(&tree, current_point).expect("to get node");
 
     let parent = current_node
@@ -43,26 +38,15 @@ pub fn handle_go_to_definition(
 
     match parent.kind() {
         "variable_name" => {
-            let location = find_variable_declaration(
-                &current_node,
-                &document,
-                &params.text_document_position_params.text_document.uri,
-                &tree,
-            )
-            .expect("to find variable declaration");
+            let location = find_variable_declaration(&current_node, &document, uri, &tree)
+                .expect("to find variable declaration");
 
             Some(GotoDefinitionResponse::Scalar(location))
         }
         "named_type" => {
-            let location = find_class_definition(
-                &current_node,
-                &document,
-                &tree,
-                &params.text_document_position_params.text_document.uri,
-                state,
-                parser,
-            )
-            .expect("to find class definition");
+            let location =
+                find_class_definition(&current_node, &document, &tree, uri, state, parser)
+                    .expect("to find class definition");
 
             Some(GotoDefinitionResponse::Scalar(location))
         }

@@ -6,10 +6,10 @@ Status of planned features for pherris.
 
 Goal of the MVP is to be able to have basic navigation across the codebase
 
-- Go to variable declaration/initialization [] (kinda done)
-- Go to class definition [X]
-- Find references []
-- Go to implementation []
-- Hover []
-- Signature help (class import) []
+- [] Go to variable declaration/initialization (kinda done)
+- [x] Go to class definition 
+- [] Find references
+- [] Go to implementation
+- [] Hover
+- [] Signature help (class import) 
 

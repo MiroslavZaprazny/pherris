@@ -1,4 +1,3 @@
-use dashmap::DashMap;
 use pherris::analyzer::parser::Parser;
 use pherris::lsp::backend::Backend;
 use pherris::lsp::state::State;
@@ -26,12 +25,7 @@ async fn main() {
     let stdout = tokio::io::stdout();
     let (service, socket) = LspService::new(|_| Backend {
         parser: RwLock::new(Parser::new().unwrap()),
-        state: State::new(
-            DashMap::default(),
-            DashMap::default(),
-            RwLock::new(String::from("")),
-            DashMap::default(),
-        ),
+        state: State::default(),
     });
     Server::new(stdin, stdout, socket).serve(service).await;
 }
