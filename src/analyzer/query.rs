@@ -4,8 +4,8 @@ use tree_sitter_php::LANGUAGE_PHP;
 pub fn class_decleration_query() -> Result<Query, QueryError> {
     Query::new(
         &LANGUAGE_PHP.into(),
-        "(namespace_use_clause
-            (qualified_name) @namespace)",
+        "(class_declaration
+            (name) @class_name)",
     )
 }
 
