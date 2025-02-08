@@ -1,3 +1,4 @@
+use crate::analyzer::composer::load_autoload_class_map;
 use crate::analyzer::parser::Parser;
 use crate::handlers::notification::handle_did_open;
 use crate::handlers::request::handle_go_to_definition;
@@ -21,6 +22,7 @@ impl LanguageServer for Backend {
             let mut guard = self.state.root_path.write().unwrap();
             *guard = String::from(root_uri.path());
         }
+        load_autoload_class_map(&self.parser, &self.state);
 
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
@@ -46,7 +48,6 @@ impl LanguageServer for Backend {
         &self,
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
-        debug!("Goto definition params: {:?}", params);
         Ok(handle_go_to_definition(
             &params.text_document_position_params.text_document.uri,
             &params.text_document_position_params.position,

@@ -34,15 +34,15 @@ pub fn print_tree(tree: &Tree) {
 pub fn print_node(node: Node, depth: usize) {
     let indent = "  ".repeat(depth);
 
-    debug!(
-        "{}{} [{}, {}] - [{}, {}]",
-        indent,
-        node.kind(),
-        node.start_position().row,
-        node.start_position().column,
-        node.end_position().row,
-        node.end_position().column
-    );
+    // debug!(
+    //     "{}{} [{}, {}] - [{}, {}]",
+    //     indent,
+    //     node.kind(),
+    //     node.start_position().row,
+    //     node.start_position().column,
+    //     node.end_position().row,
+    //     node.end_position().column
+    // );
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {

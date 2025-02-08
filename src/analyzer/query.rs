@@ -1,7 +1,7 @@
 use tree_sitter::{Query, QueryError};
 use tree_sitter_php::LANGUAGE_PHP;
 
-pub fn class_decleration_query() -> Result<Query, QueryError> {
+pub fn class_declaration_query() -> Result<Query, QueryError> {
     Query::new(
         &LANGUAGE_PHP.into(),
         "(class_declaration
@@ -9,11 +9,35 @@ pub fn class_decleration_query() -> Result<Query, QueryError> {
     )
 }
 
-pub fn variable_decleration_query() -> Result<Query, QueryError> {
+pub fn interface_declaration_query() -> Result<Query, QueryError> {
     Query::new(
         &LANGUAGE_PHP.into(),
-        "(assignment_expression left: (variable_name) @declaration)",
+        "(interface_declaration
+            (name) @class_name)",
     )
+}
+
+pub fn enum_declaration_query() -> Result<Query, QueryError> {
+    Query::new(
+        &LANGUAGE_PHP.into(),
+        "(enum_declaration
+            (name) @class_name)",
+    )
+}
+
+pub fn trait_declaration_query() -> Result<Query, QueryError> {
+    Query::new(
+        &LANGUAGE_PHP.into(),
+        "(enum_declaration
+            (name) @class_name)",
+    )
+}
+
+pub fn variable_declaration_query() -> Result<Query, QueryError> {
+     Query::new(
+         &LANGUAGE_PHP.into(),
+        "(assignment_expression left: (variable_name) @declaration)",
+     )
 }
 
 pub fn namespace_use_query() -> Result<Query, QueryError> {

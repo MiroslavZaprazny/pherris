@@ -3,7 +3,7 @@ use std::sync::RwLock;
 use tower_lsp::lsp_types::TextDocumentItem;
 
 use crate::{
-    analyzer::{composer::load_autoload_class_map, parser::Parser},
+    analyzer::parser::Parser,
     lsp::state::State,
 };
 
@@ -20,6 +20,4 @@ pub fn handle_did_open(document: TextDocumentItem, state: &State, parser: &RwLoc
 
     state.ast_map.insert(document.uri.clone(), tree);
     state.document_map.insert(document.uri, document.text);
-
-    load_autoload_class_map(parser, state);
 }

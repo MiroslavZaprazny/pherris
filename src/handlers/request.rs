@@ -9,7 +9,7 @@ use crate::{
     analyzer::{
         parser::Parser,
         query::{
-            class_decleration_query, namespace_use_query, param_query, variable_decleration_query,
+            class_declaration_query, namespace_use_query, param_query, variable_declaration_query, interface_declaration_query, enum_declaration_query, trait_declaration_query,
         },
         utils::{
             find_nearest_location, get_node_for_point, get_point_from_position,
@@ -36,6 +36,9 @@ pub fn handle_go_to_definition(
         .parent()
         .expect("to get parent of current node");
 
+    debug!("Parent: {}", parent.kind());
+    debug!("Current node: {}", parent.kind());
+
     match parent.kind() {
         "variable_name" => {
             let location = find_variable_declaration(&current_node, &document, uri, &tree)
@@ -45,10 +48,18 @@ pub fn handle_go_to_definition(
         }
         "named_type" => {
             let location =
-                find_class_definition(&current_node, &document, &tree, uri, state, parser)
-                    .expect("to find class definition");
+                find_named_type_definition(&current_node, &document, &tree, uri, state, parser)
+                    .expect("to find named type definition");
 
             Some(GotoDefinitionResponse::Scalar(location))
+        }
+        // traits
+        "use_declaration" => {
+            todo!("todo");
+        }
+        // use statement
+        "qualified_name" => {
+            todo!("todo");
         }
         _ => None,
     }
@@ -56,7 +67,7 @@ pub fn handle_go_to_definition(
 
 //TODO move to analyzer crate
 //instead of state we should pass in the path i guess
-fn find_class_definition(
+fn find_named_type_definition(
     current_node: &Node,
     document: &str,
     tree: &Tree,
@@ -64,7 +75,7 @@ fn find_class_definition(
     state: &State,
     parser: &RwLock<Parser>,
 ) -> Option<Location> {
-    let class_name = current_node
+    let named_type_name = current_node
         .utf8_text(document.as_bytes())
         .expect("to get class name");
 
@@ -84,7 +95,7 @@ fn find_class_definition(
                 .expect("to get use statement");
 
             debug!("FQN: {}", fqn);
-            debug!("class_name: {}", class_name);
+            debug!("named type name: {}", named_type_name);
 
             let path = state.class_map.get(fqn);
 
@@ -92,16 +103,15 @@ fn find_class_definition(
                 continue;
             }
 
-            if fqn.ends_with(format!("\\{}", class_name).as_str()) {
+            if fqn.ends_with(format!("\\{}", named_type_name).as_str()) {
                 debug!("found: {}", fqn);
                 let path = path.unwrap();
-                let location = get_class_declaration_location(
-                    &PathBuf::from(&path.to_owned()),
-                    class_name,
-                    parser,
-                );
 
-                if let Some(location) = location {
+                if let Some(location) = get_named_type_declaration_location(
+                    &PathBuf::from(&path.to_owned()),
+                    named_type_name,
+                    parser,
+                ) {
                     return Some(location);
                 }
             }
@@ -125,7 +135,7 @@ fn find_class_definition(
             continue;
         }
 
-        if let Some(location) = get_class_declaration_location(&path, class_name, parser) {
+        if let Some(location) = get_named_type_declaration_location(&path, named_type_name, parser) {
             return Some(location);
         }
     }
@@ -134,9 +144,9 @@ fn find_class_definition(
 }
 
 //TODO move to analyzer crate
-fn get_class_declaration_location(
+fn get_named_type_declaration_location(
     path: &PathBuf,
-    class_name: &str,
+    name: &str,
     parser: &RwLock<Parser>,
 ) -> Option<Location> {
     if path.is_dir() {
@@ -152,17 +162,33 @@ fn get_class_declaration_location(
         .expect("to parse file");
     print_tree(&tree);
 
-    let query = class_decleration_query().expect("to create query");
+    if let Some(location) = capture_named_type_location(&class_declaration_query().expect("to create query"), name, &tree, content.as_bytes(), path) {
+        return Some(location);
+    }
+
+    if let Some(location) = capture_named_type_location(&interface_declaration_query().expect("to create query"), name, &tree, content.as_bytes(), path) {
+        return Some(location);
+    }
+
+    if let Some(location) = capture_named_type_location(&enum_declaration_query().expect("to create query"), name, &tree, content.as_bytes(), path) {
+        return Some(location);
+    }
+
+    None
+}
+
+fn capture_named_type_location(query: &Query, name: &str, tree: &Tree, content: &[u8], path: &PathBuf) -> Option<Location> {
     let mut cursor = QueryCursor::new();
-    let mut matches = cursor.matches(&query, tree.root_node(), content.as_bytes());
+    let mut matches = cursor.matches(&query, tree.root_node(), content);
+
 
     while let Some(match_) = matches.next() {
         for capture in match_.captures {
             let node = capture.node;
             let node_text = node
-                .utf8_text(content.as_bytes())
+                .utf8_text(content)
                 .expect("to get class name");
-            if node_text == class_name {
+            if node_text == name {
                 return Some(Location::new(
                     Url::from_file_path(path).unwrap(),
                     tower_lsp::lsp_types::Range::new(
@@ -191,7 +217,7 @@ fn find_variable_declaration(
     // but this kinda works so fuck it
 
     let var_declare_query =
-        variable_decleration_query().expect("to create variable declaration query");
+        variable_declaration_query().expect("to create variable declaration query");
     let var_param_query = param_query().expect("to create parameter query");
 
     let var_name = current_node
