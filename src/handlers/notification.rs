@@ -2,10 +2,7 @@ use std::sync::RwLock;
 
 use tower_lsp::lsp_types::TextDocumentItem;
 
-use crate::{
-    analyzer::parser::Parser,
-    lsp::state::State,
-};
+use crate::{analyzer::parser::Parser, lsp::state::State};
 
 pub fn handle_did_open(document: TextDocumentItem, state: &State, parser: &RwLock<Parser>) {
     if state.ast_map.contains_key(&document.uri) {

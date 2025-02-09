@@ -28,16 +28,16 @@ pub fn enum_declaration_query() -> Result<Query, QueryError> {
 pub fn trait_declaration_query() -> Result<Query, QueryError> {
     Query::new(
         &LANGUAGE_PHP.into(),
-        "(enum_declaration
+        "(trait_declaration
             (name) @class_name)",
     )
 }
 
 pub fn variable_declaration_query() -> Result<Query, QueryError> {
-     Query::new(
-         &LANGUAGE_PHP.into(),
+    Query::new(
+        &LANGUAGE_PHP.into(),
         "(assignment_expression left: (variable_name) @declaration)",
-     )
+    )
 }
 
 pub fn namespace_use_query() -> Result<Query, QueryError> {

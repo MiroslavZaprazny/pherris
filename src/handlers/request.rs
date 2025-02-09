@@ -9,7 +9,8 @@ use crate::{
     analyzer::{
         parser::Parser,
         query::{
-            class_declaration_query, namespace_use_query, param_query, variable_declaration_query, interface_declaration_query, enum_declaration_query, trait_declaration_query,
+            class_declaration_query, enum_declaration_query, interface_declaration_query,
+            namespace_use_query, param_query, trait_declaration_query, variable_declaration_query,
         },
         utils::{
             find_nearest_location, get_node_for_point, get_point_from_position,
@@ -46,16 +47,12 @@ pub fn handle_go_to_definition(
 
             Some(GotoDefinitionResponse::Scalar(location))
         }
-        "named_type" => {
+        "named_type" | "use_declaration" => {
             let location =
                 find_named_type_definition(&current_node, &document, &tree, uri, state, parser)
                     .expect("to find named type definition");
 
             Some(GotoDefinitionResponse::Scalar(location))
-        }
-        // traits
-        "use_declaration" => {
-            todo!("todo");
         }
         // use statement
         "qualified_name" => {
@@ -135,7 +132,8 @@ fn find_named_type_definition(
             continue;
         }
 
-        if let Some(location) = get_named_type_declaration_location(&path, named_type_name, parser) {
+        if let Some(location) = get_named_type_declaration_location(&path, named_type_name, parser)
+        {
             return Some(location);
         }
     }
@@ -162,32 +160,63 @@ fn get_named_type_declaration_location(
         .expect("to parse file");
     print_tree(&tree);
 
-    if let Some(location) = capture_named_type_location(&class_declaration_query().expect("to create query"), name, &tree, content.as_bytes(), path) {
+    if let Some(location) = capture_named_type_location(
+        &class_declaration_query().expect("to create query"),
+        name,
+        &tree,
+        content.as_bytes(),
+        path,
+    ) {
         return Some(location);
     }
 
-    if let Some(location) = capture_named_type_location(&interface_declaration_query().expect("to create query"), name, &tree, content.as_bytes(), path) {
+    if let Some(location) = capture_named_type_location(
+        &interface_declaration_query().expect("to create query"),
+        name,
+        &tree,
+        content.as_bytes(),
+        path,
+    ) {
         return Some(location);
     }
 
-    if let Some(location) = capture_named_type_location(&enum_declaration_query().expect("to create query"), name, &tree, content.as_bytes(), path) {
+    if let Some(location) = capture_named_type_location(
+        &enum_declaration_query().expect("to create query"),
+        name,
+        &tree,
+        content.as_bytes(),
+        path,
+    ) {
+        return Some(location);
+    }
+
+    if let Some(location) = capture_named_type_location(
+        &trait_declaration_query().expect("to create query"),
+        name,
+        &tree,
+        content.as_bytes(),
+        path,
+    ) {
         return Some(location);
     }
 
     None
 }
 
-fn capture_named_type_location(query: &Query, name: &str, tree: &Tree, content: &[u8], path: &PathBuf) -> Option<Location> {
+fn capture_named_type_location(
+    query: &Query,
+    name: &str,
+    tree: &Tree,
+    content: &[u8],
+    path: &PathBuf,
+) -> Option<Location> {
     let mut cursor = QueryCursor::new();
-    let mut matches = cursor.matches(&query, tree.root_node(), content);
-
+    let mut matches = cursor.matches(query, tree.root_node(), content);
 
     while let Some(match_) = matches.next() {
         for capture in match_.captures {
             let node = capture.node;
-            let node_text = node
-                .utf8_text(content)
-                .expect("to get class name");
+            let node_text = node.utf8_text(content).expect("to get class name");
             if node_text == name {
                 return Some(Location::new(
                     Url::from_file_path(path).unwrap(),
