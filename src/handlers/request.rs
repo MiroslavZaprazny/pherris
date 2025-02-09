@@ -47,16 +47,12 @@ pub fn handle_go_to_definition(
 
             Some(GotoDefinitionResponse::Scalar(location))
         }
-        "named_type" | "use_declaration" => {
+        "named_type" | "use_declaration" | "qualified_name" => {
             let location =
                 find_named_type_definition(&current_node, &document, &tree, uri, state, parser)
                     .expect("to find named type definition");
 
             Some(GotoDefinitionResponse::Scalar(location))
-        }
-        // use statement
-        "qualified_name" => {
-            todo!("todo");
         }
         _ => None,
     }
