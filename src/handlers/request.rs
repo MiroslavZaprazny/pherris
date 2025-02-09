@@ -47,7 +47,14 @@ pub fn handle_go_to_definition(
 
             Some(GotoDefinitionResponse::Scalar(location))
         }
-        "named_type" | "use_declaration" | "qualified_name" => {
+        "named_type"
+        | "use_declaration"
+        | "qualified_name"
+        | "class_constant_access_expression"
+        | "base_clause"
+        | "class_interface_clause"
+        | "object_creation_expression"
+        | "scoped_call_expression" => {
             let location =
                 find_named_type_definition(&current_node, &document, &tree, uri, state, parser)
                     .expect("to find named type definition");
