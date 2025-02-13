@@ -1,56 +1,39 @@
 use tree_sitter::{Query, QueryError};
 use tree_sitter_php::LANGUAGE_PHP;
 
-pub fn class_declaration_query() -> Result<Query, QueryError> {
+pub fn named_type_declaration_query() -> Result<Query, QueryError> {
     Query::new(
         &LANGUAGE_PHP.into(),
         "(class_declaration
-            (name) @class_name)",
-    )
-}
+            (name) @class_name)
 
-pub fn interface_declaration_query() -> Result<Query, QueryError> {
-    Query::new(
-        &LANGUAGE_PHP.into(),
-        "(interface_declaration
-            (name) @class_name)",
-    )
-}
+        (interface_declaration
+            (name) @interface)
 
-pub fn enum_declaration_query() -> Result<Query, QueryError> {
-    Query::new(
-        &LANGUAGE_PHP.into(),
-        "(enum_declaration
-            (name) @class_name)",
-    )
-}
+        (enum_declaration
+            (name) @enum)
 
-pub fn trait_declaration_query() -> Result<Query, QueryError> {
-    Query::new(
-        &LANGUAGE_PHP.into(),
-        "(trait_declaration
-            (name) @class_name)",
+        (trait_declaration
+            (name) @trait)
+        ",
     )
 }
 
 pub fn variable_declaration_query() -> Result<Query, QueryError> {
     Query::new(
         &LANGUAGE_PHP.into(),
-        "(assignment_expression left: (variable_name) @declaration)",
-    )
-}
+        "(assignment_expression 
+            left: (variable_name) @variable_assignemnt)
 
-pub fn variable_declaration_foreach_query() -> Result<Query, QueryError> {
-    Query::new(
-        &LANGUAGE_PHP.into(),
-        "(foreach_statement (variable_name) @name)",
-    )
-}
+        (foreach_statement 
+            (variable_name) @foreach_declaration)
 
-pub fn variable_declaration_foreach_pair_query() -> Result<Query, QueryError> {
-    Query::new(
-        &LANGUAGE_PHP.into(),
-        "(foreach_statement (pair (variable_name) @name))",
+        (foreach_statement 
+            (pair (variable_name) @foreach_pair_declaration))
+
+        (simple_parameter
+            (variable_name) @parameter_declaration)
+        ",
     )
 }
 
@@ -62,9 +45,3 @@ pub fn namespace_use_query() -> Result<Query, QueryError> {
     )
 }
 
-pub fn param_query() -> Result<Query, QueryError> {
-    Query::new(
-        &LANGUAGE_PHP.into(),
-        "(simple_parameter (variable_name) @declaration)",
-    )
-}

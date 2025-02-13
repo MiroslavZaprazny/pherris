@@ -43,6 +43,14 @@ impl LanguageServer for Backend {
         })
     }
 
+    async fn shutdown(&self) -> Result<()> {
+        Ok(())
+    }
+
+    async fn did_open(&self, params: DidOpenTextDocumentParams) {
+        handle_did_open(params.text_document, &self.state, &self.parser)
+    }
+
     async fn goto_definition(
         &self,
         params: GotoDefinitionParams,
@@ -53,13 +61,5 @@ impl LanguageServer for Backend {
             &self.state,
             &self.parser,
         ))
-    }
-
-    async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        handle_did_open(params.text_document, &self.state, &self.parser)
-    }
-
-    async fn shutdown(&self) -> Result<()> {
-        Ok(())
     }
 }
