@@ -40,6 +40,20 @@ pub fn variable_declaration_query() -> Result<Query, QueryError> {
     )
 }
 
+pub fn variable_declaration_foreach_query() -> Result<Query, QueryError> {
+    Query::new(
+        &LANGUAGE_PHP.into(),
+        "(foreach_statement (variable_name) @name)",
+    )
+}
+
+pub fn variable_declaration_foreach_pair_query() -> Result<Query, QueryError> {
+    Query::new(
+        &LANGUAGE_PHP.into(),
+        "(foreach_statement (pair (variable_name) @name))",
+    )
+}
+
 pub fn namespace_use_query() -> Result<Query, QueryError> {
     Query::new(
         &LANGUAGE_PHP.into(),

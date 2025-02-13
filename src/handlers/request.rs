@@ -10,7 +10,9 @@ use crate::{
         parser::Parser,
         query::{
             class_declaration_query, enum_declaration_query, interface_declaration_query,
-            namespace_use_query, param_query, trait_declaration_query, variable_declaration_query,
+            namespace_use_query, param_query, trait_declaration_query,
+            variable_declaration_foreach_pair_query, variable_declaration_foreach_query,
+            variable_declaration_query,
         },
         utils::{
             find_nearest_location, get_node_for_point, get_point_from_position,
@@ -41,7 +43,7 @@ pub fn handle_go_to_definition(
     debug!("Current node: {}", parent.kind());
 
     match parent.kind() {
-        "variable_name" => {
+        "variable_name" | "member_access_expression" => {
             let location = find_variable_declaration(&current_node, &document, uri, &tree)
                 .expect("to find variable declaration");
 
@@ -251,6 +253,10 @@ fn find_variable_declaration(
     let var_declare_query =
         variable_declaration_query().expect("to create variable declaration query");
     let var_param_query = param_query().expect("to create parameter query");
+    let var_foreach_query =
+        variable_declaration_foreach_query().expect("to create parameter query");
+    let var_foreach_pair_query =
+        variable_declaration_foreach_pair_query().expect("to create parameter query");
 
     let var_name = current_node
         .utf8_text(document.as_bytes())
@@ -259,14 +265,31 @@ fn find_variable_declaration(
 
     locations.append(&mut match_variable_locations_for_query(
         var_name,
-        &var_declare_query,
+        &var_param_query,
         tree,
         document,
         uri,
     ));
+
     locations.append(&mut match_variable_locations_for_query(
         var_name,
-        &var_param_query,
+        &var_foreach_query,
+        tree,
+        document,
+        uri,
+    ));
+
+    locations.append(&mut match_variable_locations_for_query(
+        var_name,
+        &var_foreach_pair_query,
+        tree,
+        document,
+        uri,
+    ));
+
+    locations.append(&mut match_variable_locations_for_query(
+        var_name,
+        &var_declare_query,
         tree,
         document,
         uri,
