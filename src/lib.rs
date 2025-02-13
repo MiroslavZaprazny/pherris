@@ -1,2 +1,3 @@
+pub mod analyzer;
+pub mod handlers;
 pub mod lsp;
-pub mod tree;
