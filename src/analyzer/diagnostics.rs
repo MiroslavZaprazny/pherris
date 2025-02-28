@@ -3,6 +3,21 @@ use tracing::debug;
 
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range, TextDocumentItem};
 
+enum DiagnosticRuntime {
+    LOCAL,
+    TS,
+}
+
+impl DiagnosticRuntime {
+    fn detect() -> Self {
+        if Command::new("php").arg("-v").output().is_ok() {
+            return Self::LOCAL;
+        }
+
+        Self::TS
+    }
+}
+
 pub struct DiagnosticsError {
     pub message: String,
 }
@@ -13,7 +28,7 @@ impl DiagnosticsError {
     }
 }
 
-pub trait DiagnosticCollector {
+pub trait DiagnosticCollector: Send + Sync {
     fn collect(&self, document: &TextDocumentItem) -> Result<Vec<Diagnostic>, DiagnosticsError>;
 }
 
@@ -28,8 +43,6 @@ impl DiagnosticCollector for PhpCliDiagnosticCollector {
             .output()
         {
             Ok(output) => {
-                debug!("output: {:?}", output);
-
                 let mut diagnostics = Vec::new();
                 let lines = String::from_utf8_lossy(&output.stderr);
 
@@ -38,11 +51,6 @@ impl DiagnosticCollector for PhpCliDiagnosticCollector {
                     if !line.contains("PHP Parse error:  syntax error,") {
                         continue;
                     }
-
-                    debug!("has parse error: {:?}", true);
-                    debug!("1: {:?}", line.find("syntax error"));
-                    debug!("2: {:?}", line.find("in"));
-                    debug!("3: {:?}", line.find("on line"));
 
                     if let (Some(start), Some(end), Some(line_num)) = (
                         line.find("syntax error"),
@@ -68,8 +76,6 @@ impl DiagnosticCollector for PhpCliDiagnosticCollector {
 
                         diagnostics.push(diagnostic);
                     }
-
-                    debug!("Unable to parse error message for line: {}", line)
                 }
 
                 Ok(diagnostics)
@@ -79,17 +85,33 @@ impl DiagnosticCollector for PhpCliDiagnosticCollector {
     }
 }
 
+struct TsDiagnosticCollector {}
+impl DiagnosticCollector for TsDiagnosticCollector {
+    fn collect(&self, _document: &TextDocumentItem) -> Result<Vec<Diagnostic>, DiagnosticsError> {
+        Ok(Vec::new())
+    }
+}
+
+impl TsDiagnosticCollector {
+    fn new() -> Self {
+        TsDiagnosticCollector {}
+    }
+}
+
 impl PhpCliDiagnosticCollector {
-    fn new() -> PhpCliDiagnosticCollector {
+    fn new() -> Self {
         PhpCliDiagnosticCollector {}
     }
 }
 
-//TODO determine the implementation based on some config?
 pub struct DiagnosticCollectorFactory {}
 
 impl DiagnosticCollectorFactory {
-    pub fn create() -> impl DiagnosticCollector {
-        PhpCliDiagnosticCollector::new()
+    pub fn create() -> Box<dyn DiagnosticCollector> {
+        match DiagnosticRuntime::detect() {
+            // DiagnosticRuntime::TS => Box::new(TsDiagnosticCollector::new()),
+            DiagnosticRuntime::LOCAL => Box::new(PhpCliDiagnosticCollector::new()),
+            DiagnosticRuntime::TS => Box::new(TsDiagnosticCollector::new()),
+        }
     }
 }

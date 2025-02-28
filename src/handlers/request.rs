@@ -170,46 +170,6 @@ fn get_named_type_declaration_location(
         return Some(location);
     }
 
-    // if let Some(location) = capture_named_type_location(
-    //     &class_declaration_query().expect("to create query"),
-    //     name,
-    //     &tree,
-    //     content.as_bytes(),
-    //     path,
-    // ) {
-    //     return Some(location);
-    // }
-    //
-    // if let Some(location) = capture_named_type_location(
-    //     &interface_declaration_query().expect("to create query"),
-    //     name,
-    //     &tree,
-    //     content.as_bytes(),
-    //     path,
-    // ) {
-    //     return Some(location);
-    // }
-    //
-    // if let Some(location) = capture_named_type_location(
-    //     &enum_declaration_query().expect("to create query"),
-    //     name,
-    //     &tree,
-    //     content.as_bytes(),
-    //     path,
-    // ) {
-    //     return Some(location);
-    // }
-    //
-    // if let Some(location) = capture_named_type_location(
-    //     &trait_declaration_query().expect("to create query"),
-    //     name,
-    //     &tree,
-    //     content.as_bytes(),
-    //     path,
-    // ) {
-    //     return Some(location);
-    // }
-
     None
 }
 

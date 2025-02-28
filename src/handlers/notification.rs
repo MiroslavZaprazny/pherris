@@ -4,9 +4,7 @@ use tower_lsp::{lsp_types::TextDocumentItem, Client};
 use tracing::debug;
 
 use crate::{
-    analyzer::{
-        diagnostics::DiagnosticCollector, diagnostics::DiagnosticCollectorFactory, parser::Parser,
-    },
+    analyzer::{diagnostics::DiagnosticCollectorFactory, parser::Parser},
     lsp::state::State,
 };
 
