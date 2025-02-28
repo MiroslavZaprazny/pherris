@@ -23,7 +23,8 @@ async fn main() {
     debug!("Starting lsp server");
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
-    let (service, socket) = LspService::new(|_| Backend {
+    let (service, socket) = LspService::new(|client| Backend {
+        client,
         parser: RwLock::new(Parser::new().unwrap()),
         state: State::default(),
     });

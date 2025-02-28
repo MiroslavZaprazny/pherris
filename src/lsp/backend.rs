@@ -5,11 +5,14 @@ use crate::handlers::request::handle_go_to_definition;
 use std::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
+use tower_lsp::Client;
 use tower_lsp::LanguageServer;
+use tracing::debug;
 
 use super::state::State;
 
 pub struct Backend {
+    pub client: Client,
     pub parser: RwLock<Parser>,
     pub state: State,
 }
@@ -17,6 +20,8 @@ pub struct Backend {
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        debug!("intialize notification");
+
         if let Some(root_uri) = params.root_uri {
             let mut guard = self.state.root_path.write().unwrap();
             *guard = String::from(root_uri.path());
@@ -48,7 +53,14 @@ impl LanguageServer for Backend {
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        handle_did_open(params.text_document, &self.state, &self.parser)
+        debug!("Did open notification");
+        handle_did_open(
+            &params.text_document,
+            &self.state,
+            &self.parser,
+            &self.client,
+        )
+        .await
     }
 
     async fn goto_definition(

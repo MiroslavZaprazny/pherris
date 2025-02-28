@@ -8,9 +8,7 @@ use tree_sitter::{Node, Query, QueryCursor, Tree};
 use crate::{
     analyzer::{
         parser::Parser,
-        query::{
-            namespace_use_query, variable_declaration_query, named_type_declaration_query,
-        },
+        query::{named_type_declaration_query, namespace_use_query, variable_declaration_query},
         utils::{
             find_nearest_location, get_node_for_point, get_point_from_position,
             get_position_from_point, print_tree,
@@ -172,7 +170,6 @@ fn get_named_type_declaration_location(
         return Some(location);
     }
 
-
     // if let Some(location) = capture_named_type_location(
     //     &class_declaration_query().expect("to create query"),
     //     name,
@@ -265,13 +262,8 @@ fn find_variable_declaration(
         .utf8_text(document.as_bytes())
         .expect("to get current variable name");
 
-    let locations = match_variable_locations_for_query(
-        var_name,
-        &var_declare_query,
-        tree,
-        document,
-        uri,
-    );
+    let locations =
+        match_variable_locations_for_query(var_name, &var_declare_query, tree, document, uri);
     debug!("Locations: {:?}", locations);
 
     find_nearest_location(

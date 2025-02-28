@@ -45,3 +45,6 @@ pub fn namespace_use_query() -> Result<Query, QueryError> {
     )
 }
 
+pub fn error_query() -> Result<Query, QueryError> {
+    Query::new(&LANGUAGE_PHP.into(), "(ERROR) @general_error")
+}
