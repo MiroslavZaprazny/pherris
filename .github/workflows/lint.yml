@@ -1,20 +1,17 @@
-name: Fmt
+name: lint
 
 on:
   push:
 
-env:
-  RUSTFLAGS: "-Dwarnings"
-
 jobs:
-  checks:
+  lint:
 
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
     - name: Clippy
-      run: cargo clippy
+      run: cargo clippy -- -D warnings
     - name: Fmt
       run: cargo fmt --check
 
