@@ -1,0 +1,21 @@
+name: Test
+
+on:
+  push:
+
+jobs:
+  checks:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Clippy
+      run: cargo clippy
+    - name: Build test image
+      run: docker build . -t test --target test
+    - name: Run tests
+      run: docker run test
+    - name: Fmt
+      run: cargo fmt --check
+
