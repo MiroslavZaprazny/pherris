@@ -19,11 +19,19 @@ trait DiagnosticCollector: Send + Sync {
     fn collect(&self, document: &TextDocumentItem) -> Result<Vec<Diagnostic>, DiagnosticsError>;
 }
 
-struct PhpCliSyntaxDiagnosticCollector {}
+struct PhpCliSyntaxDiagnosticCollector {
+    php_bin_path: Option<String>,
+}
 
 impl DiagnosticCollector for PhpCliSyntaxDiagnosticCollector {
     fn collect(&self, document: &TextDocumentItem) -> Result<Vec<Diagnostic>, DiagnosticsError> {
-        match Command::new("php")
+        let bin = match &self.php_bin_path {
+            Some(v) => v,
+            None => "php",
+        };
+        debug!("bin: {}", bin);
+
+        match Command::new(bin)
             .args(["-l", document.uri.to_file_path().unwrap().to_str().unwrap()])
             .output()
         {
@@ -65,8 +73,8 @@ impl DiagnosticCollector for PhpCliSyntaxDiagnosticCollector {
 }
 
 impl PhpCliSyntaxDiagnosticCollector {
-    fn new() -> Self {
-        PhpCliSyntaxDiagnosticCollector {}
+    fn new(php_bin_path: Option<String>) -> Self {
+        PhpCliSyntaxDiagnosticCollector { php_bin_path }
     }
 }
 
@@ -94,7 +102,10 @@ impl DiagnosticCollector for DockerSyntaxDiagnosticCollector {
                 "run",
                 "--rm",
                 "-v",
-                &format!("{}:/file.php", document.uri.to_file_path().unwrap().to_str().unwrap()),
+                &format!(
+                    "{}:/file.php",
+                    document.uri.to_file_path().unwrap().to_str().unwrap()
+                ),
                 &self.image,
                 "php",
                 "-l",
@@ -172,7 +183,9 @@ impl SyntaxDiagnosticCollectorFactory {
         //eh
         match options.runtime {
             Some(runtime) => match runtime {
-                Runtime::PhpCli => Box::new(PhpCliSyntaxDiagnosticCollector::new()),
+                Runtime::PhpCli => {
+                    Box::new(PhpCliSyntaxDiagnosticCollector::new(options.php_bin_path))
+                }
                 Runtime::Docker => {
                     let image = match options.docker_image {
                         Some(v) => v,
@@ -188,7 +201,7 @@ impl SyntaxDiagnosticCollectorFactory {
             None => {
                 debug!("defaulting to either php or ts");
                 if Command::new("php").arg("-v").output().is_ok() {
-                    return Box::new(PhpCliSyntaxDiagnosticCollector {});
+                    return Box::new(PhpCliSyntaxDiagnosticCollector::new(options.php_bin_path));
                 }
 
                 return Box::new(TsSyntaxDiagnosticCollector {});
@@ -232,7 +245,7 @@ mod tests {
             file_contents.to_string(),
         );
 
-        let collector = PhpCliSyntaxDiagnosticCollector::new();
+        let collector = PhpCliSyntaxDiagnosticCollector::new(None);
 
         match collector.collect(&document) {
             Ok(d) => {
