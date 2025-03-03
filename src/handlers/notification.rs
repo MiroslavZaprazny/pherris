@@ -4,8 +4,8 @@ use tower_lsp::{lsp_types::TextDocumentItem, Client};
 use tracing::debug;
 
 use crate::{
-    analyzer::{diagnostics::DiagnosticCollectorFactory, parser::Parser},
-    lsp::state::State,
+    analyzer::{diagnostics::collect_diagnostics, parser::Parser},
+    lsp::{config::InitializeOptions, state::State},
 };
 
 pub async fn handle_did_open(
@@ -13,9 +13,9 @@ pub async fn handle_did_open(
     state: &State,
     parser: &RwLock<Parser>,
     client: &Client,
+    options: &RwLock<InitializeOptions>,
 ) {
     let uri = document.uri.clone();
-    let diagnostic_collector = DiagnosticCollectorFactory::create();
 
     let diagnostics = {
         let tree = parser
@@ -24,13 +24,14 @@ pub async fn handle_did_open(
             .parse(&document.text)
             .expect("to parse file");
 
-        let diags = match diagnostic_collector.collect(document) {
+        let diags = match collect_diagnostics(document, options) {
             Ok(d) => Some(d),
             Err(err) => {
                 debug!("Failed to collect diagnostics: {}", err.message);
                 None
             }
         };
+        debug!("diags {:?}", diags);
 
         state.ast_map.insert(uri.clone(), tree);
         state

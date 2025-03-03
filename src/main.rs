@@ -1,5 +1,6 @@
 use pherris::analyzer::parser::Parser;
 use pherris::lsp::backend::Backend;
+use pherris::lsp::config::InitializeOptions;
 use pherris::lsp::state::State;
 use std::sync::RwLock;
 use tower_lsp::{LspService, Server};
@@ -27,6 +28,7 @@ async fn main() {
         client,
         parser: RwLock::new(Parser::new().unwrap()),
         state: State::default(),
+        options: RwLock::new(InitializeOptions::default()),
     });
     Server::new(stdin, stdout, socket).serve(service).await;
 }
