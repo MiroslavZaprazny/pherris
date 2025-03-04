@@ -46,8 +46,8 @@ impl LanguageServer for Backend {
                         save: Some(TextDocumentSyncSaveOptions::SaveOptions(SaveOptions {
                             include_text: Some(true),
                         })),
-                        will_save: Some(true),            //idk what this does
-                        will_save_wait_until: Some(true), //idk what this does
+                        will_save: Some(true),
+                        will_save_wait_until: Some(false),
                     },
                 )),
                 definition_provider: Some(OneOf::Left(true)),

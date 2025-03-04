@@ -109,7 +109,7 @@ impl DiagnosticCollector for DockerSyntaxDiagnosticCollector {
                 &self.image,
                 "php",
                 "-l",
-                &format!("/file.php"),
+                "/file.php",
             ])
             .output()
         {
@@ -204,7 +204,7 @@ impl SyntaxDiagnosticCollectorFactory {
                     return Box::new(PhpCliSyntaxDiagnosticCollector::new(options.php_bin_path));
                 }
 
-                return Box::new(TsSyntaxDiagnosticCollector {});
+                Box::new(TsSyntaxDiagnosticCollector::new())
             }
         }
     }

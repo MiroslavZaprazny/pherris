@@ -17,7 +17,7 @@ pub fn get_position_from_point(point: &Point) -> Position {
 }
 
 pub fn get_node_for_point(tree: &Tree, point: Point) -> Option<Node> {
-    return tree.root_node().descendant_for_point_range(point, point);
+    tree.root_node().descendant_for_point_range(point, point)
 }
 
 pub fn find_nearest_location(a: Position, b: Vec<Location>) -> Option<Location> {
