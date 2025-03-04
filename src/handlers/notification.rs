@@ -1,20 +1,47 @@
 use std::sync::RwLock;
 
-use tower_lsp::lsp_types::TextDocumentItem;
+use tower_lsp::{lsp_types::TextDocumentItem, Client};
+use tracing::debug;
 
-use crate::{analyzer::parser::Parser, lsp::state::State};
+use crate::{
+    analyzer::{diagnostics::collect_diagnostics, parser::Parser},
+    lsp::{config::InitializeOptions, state::State},
+};
 
-pub fn handle_did_open(document: TextDocumentItem, state: &State, parser: &RwLock<Parser>) {
-    if state.ast_map.contains_key(&document.uri) {
-        return;
+pub async fn handle_did_open(
+    document: &TextDocumentItem,
+    state: &State,
+    parser: &RwLock<Parser>,
+    client: &Client,
+    options: &RwLock<InitializeOptions>,
+) {
+    let uri = document.uri.clone();
+
+    let diagnostics = {
+        let tree = parser
+            .write()
+            .unwrap()
+            .parse(&document.text)
+            .expect("to parse file");
+
+        let diags = match collect_diagnostics(document, options) {
+            Ok(d) => Some(d),
+            Err(err) => {
+                debug!("Failed to collect diagnostics: {}", err.message);
+                None
+            }
+        };
+        debug!("diags {:?}", diags);
+
+        state.ast_map.insert(uri.clone(), tree);
+        state
+            .document_map
+            .insert(uri.clone(), document.text.clone());
+
+        diags
+    };
+
+    if let Some(diags) = diagnostics {
+        client.publish_diagnostics(uri, diags, None).await;
     }
-
-    let tree = parser
-        .write()
-        .unwrap()
-        .parse(&document.text)
-        .expect("to parse file");
-
-    state.ast_map.insert(document.uri.clone(), tree);
-    state.document_map.insert(document.uri, document.text);
 }

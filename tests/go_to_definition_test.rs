@@ -248,7 +248,7 @@ fn test_find_variable_definition_in_foreach_pair() {
         panic!("response is not a location");
     }
 
-    let mut parser = Parser::new().expect("to create a parser");
+    let parser = Parser::new().expect("to create a parser");
     let response =
         handle_go_to_definition(&uri, &Position::new(4, 18), &state, &RwLock::new(parser));
     assert!(response.is_some());

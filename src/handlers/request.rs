@@ -8,12 +8,7 @@ use tree_sitter::{Node, Query, QueryCursor, Tree};
 use crate::{
     analyzer::{
         parser::Parser,
-        query::{
-            class_declaration_query, enum_declaration_query, interface_declaration_query,
-            namespace_use_query, param_query, trait_declaration_query,
-            variable_declaration_foreach_pair_query, variable_declaration_foreach_query,
-            variable_declaration_query,
-        },
+        query::{named_type_declaration_query, namespace_use_query, variable_declaration_query},
         utils::{
             find_nearest_location, get_node_for_point, get_point_from_position,
             get_position_from_point, print_tree,
@@ -166,37 +161,7 @@ fn get_named_type_declaration_location(
     print_tree(&tree);
 
     if let Some(location) = capture_named_type_location(
-        &class_declaration_query().expect("to create query"),
-        name,
-        &tree,
-        content.as_bytes(),
-        path,
-    ) {
-        return Some(location);
-    }
-
-    if let Some(location) = capture_named_type_location(
-        &interface_declaration_query().expect("to create query"),
-        name,
-        &tree,
-        content.as_bytes(),
-        path,
-    ) {
-        return Some(location);
-    }
-
-    if let Some(location) = capture_named_type_location(
-        &enum_declaration_query().expect("to create query"),
-        name,
-        &tree,
-        content.as_bytes(),
-        path,
-    ) {
-        return Some(location);
-    }
-
-    if let Some(location) = capture_named_type_location(
-        &trait_declaration_query().expect("to create query"),
+        &named_type_declaration_query().expect("to create query"),
         name,
         &tree,
         content.as_bytes(),
@@ -252,48 +217,13 @@ fn find_variable_declaration(
 
     let var_declare_query =
         variable_declaration_query().expect("to create variable declaration query");
-    let var_param_query = param_query().expect("to create parameter query");
-    let var_foreach_query =
-        variable_declaration_foreach_query().expect("to create parameter query");
-    let var_foreach_pair_query =
-        variable_declaration_foreach_pair_query().expect("to create parameter query");
 
     let var_name = current_node
         .utf8_text(document.as_bytes())
         .expect("to get current variable name");
-    let mut locations: Vec<Location> = vec![];
 
-    locations.append(&mut match_variable_locations_for_query(
-        var_name,
-        &var_param_query,
-        tree,
-        document,
-        uri,
-    ));
-
-    locations.append(&mut match_variable_locations_for_query(
-        var_name,
-        &var_foreach_query,
-        tree,
-        document,
-        uri,
-    ));
-
-    locations.append(&mut match_variable_locations_for_query(
-        var_name,
-        &var_foreach_pair_query,
-        tree,
-        document,
-        uri,
-    ));
-
-    locations.append(&mut match_variable_locations_for_query(
-        var_name,
-        &var_declare_query,
-        tree,
-        document,
-        uri,
-    ));
+    let locations =
+        match_variable_locations_for_query(var_name, &var_declare_query, tree, document, uri);
     debug!("Locations: {:?}", locations);
 
     find_nearest_location(
@@ -332,6 +262,8 @@ fn match_variable_locations_for_query(
             }
         }
     }
+
+    debug!("{:?}", out);
 
     out
 }

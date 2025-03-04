@@ -16,5 +16,6 @@ and some autocomplete and diagnostics features.
 - [] Hover
 - [] AutoComplete
 - [] Auto import classes
-- [] Diagnostics
+- [] Parse errors
+- [] Static analysis 
 
