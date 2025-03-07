@@ -1,10 +1,16 @@
 use std::sync::RwLock;
 
-use tower_lsp::{lsp_types::{TextDocumentItem, Url}, Client};
+use tower_lsp::{
+    lsp_types::{TextDocumentItem, Url},
+    Client,
+};
 use tracing::debug;
 
 use crate::{
-    analyzer::{diagnostics::{collect_diagnostics, Document}, parser::Parser},
+    analyzer::{
+        diagnostics::{collect_diagnostics, Document},
+        parser::Parser,
+    },
     lsp::{config::InitializeOptions, state::State},
 };
 
@@ -57,11 +63,7 @@ pub async fn handle_did_change(
     let uri = uri.clone();
 
     let diagnostics = {
-        let tree = parser
-            .write()
-            .unwrap()
-            .parse(text)
-            .expect("to parse file");
+        let tree = parser.write().unwrap().parse(text).expect("to parse file");
 
         let diags = match collect_diagnostics(&Document::new(uri.clone()), options) {
             Ok(d) => Some(d),
@@ -73,9 +75,7 @@ pub async fn handle_did_change(
         debug!("diags {:?}", diags);
 
         state.ast_map.insert(uri.clone(), tree);
-        state
-            .document_map
-            .insert(uri.clone(), text.to_string());
+        state.document_map.insert(uri.clone(), text.to_string());
 
         diags
     };

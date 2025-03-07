@@ -11,9 +11,7 @@ pub struct Document {
 
 impl Document {
     pub fn new(uri: Url) -> Self {
-        Self {
-            uri
-        }
+        Self { uri }
     }
 }
 
@@ -239,7 +237,7 @@ mod tests {
     use tempfile::TempDir;
     use tower_lsp::lsp_types::Url;
 
-    use super::{DiagnosticCollector, PhpCliSyntaxDiagnosticCollector, Document};
+    use super::{DiagnosticCollector, Document, PhpCliSyntaxDiagnosticCollector};
 
     #[test]
     fn test_find_parse_errors_using_php_cli() {
@@ -250,9 +248,7 @@ mod tests {
         let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
         let temp_dir_path = Path::new(&path_str);
         prepare_php_file(temp_dir_path, file_contents);
-        let document = Document::new(
-            Url::from_file_path(temp_dir_path).unwrap(),
-        );
+        let document = Document::new(Url::from_file_path(temp_dir_path).unwrap());
 
         let collector = PhpCliSyntaxDiagnosticCollector::new(None);
 
