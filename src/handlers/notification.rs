@@ -37,7 +37,6 @@ pub async fn handle_did_open(
                 None
             }
         };
-        debug!("diags {:?}", diags);
 
         state.ast_map.insert(uri.clone(), tree);
         state
@@ -72,7 +71,6 @@ pub async fn handle_did_change(
                 None
             }
         };
-        debug!("diags {:?}", diags);
 
         state.ast_map.insert(uri.clone(), tree);
         state.document_map.insert(uri.clone(), text.to_string());

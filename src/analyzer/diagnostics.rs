@@ -1,7 +1,6 @@
 use std::{process::Command, sync::RwLock};
 
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range, Url};
-use tracing::debug;
 
 use crate::lsp::config::{InitializeOptions, Runtime};
 
@@ -39,7 +38,6 @@ impl DiagnosticCollector for PhpCliSyntaxDiagnosticCollector {
             Some(v) => v,
             None => "php",
         };
-        debug!("bin: {}", bin);
 
         match Command::new(bin)
             .args(["-l", document.uri.to_file_path().unwrap().to_str().unwrap()])
@@ -124,7 +122,6 @@ impl DiagnosticCollector for DockerSyntaxDiagnosticCollector {
             .output()
         {
             Ok(output) => {
-                debug!("out: {:?}", output);
                 let mut diagnostics = Vec::new();
                 let lines = String::from_utf8_lossy(&output.stdout);
 
@@ -188,7 +185,6 @@ struct SyntaxDiagnosticCollectorFactory {}
 impl SyntaxDiagnosticCollectorFactory {
     fn create(options: &RwLock<InitializeOptions>) -> Box<dyn DiagnosticCollector> {
         let options = options.read().unwrap().clone();
-        debug!("Options: {:?}", options);
 
         //eh
         match options.runtime {
@@ -201,7 +197,6 @@ impl SyntaxDiagnosticCollectorFactory {
                         Some(v) => v,
                         None => String::from("php:8.4"),
                     };
-                    debug!("Image: {:?}", image);
 
                     Box::new(DockerSyntaxDiagnosticCollector::new(image))
                 }
@@ -209,7 +204,6 @@ impl SyntaxDiagnosticCollectorFactory {
                 Runtime::Ts => Box::new(TsSyntaxDiagnosticCollector::new()),
             },
             None => {
-                debug!("defaulting to either php or ts");
                 if Command::new("php").arg("-v").output().is_ok() {
                     return Box::new(PhpCliSyntaxDiagnosticCollector::new(options.php_bin_path));
                 }
