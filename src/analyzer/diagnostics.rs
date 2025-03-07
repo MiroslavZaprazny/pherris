@@ -1,9 +1,21 @@
 use std::{process::Command, sync::RwLock};
 
-use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range, TextDocumentItem};
+use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range, Url};
 use tracing::debug;
 
 use crate::lsp::config::{InitializeOptions, Runtime};
+
+pub struct Document {
+    pub uri: Url,
+}
+
+impl Document {
+    pub fn new(uri: Url) -> Self {
+        Self {
+            uri
+        }
+    }
+}
 
 pub struct DiagnosticsError {
     pub message: String,
@@ -16,7 +28,7 @@ impl DiagnosticsError {
 }
 
 trait DiagnosticCollector: Send + Sync {
-    fn collect(&self, document: &TextDocumentItem) -> Result<Vec<Diagnostic>, DiagnosticsError>;
+    fn collect(&self, document: &Document) -> Result<Vec<Diagnostic>, DiagnosticsError>;
 }
 
 struct PhpCliSyntaxDiagnosticCollector {
@@ -24,7 +36,7 @@ struct PhpCliSyntaxDiagnosticCollector {
 }
 
 impl DiagnosticCollector for PhpCliSyntaxDiagnosticCollector {
-    fn collect(&self, document: &TextDocumentItem) -> Result<Vec<Diagnostic>, DiagnosticsError> {
+    fn collect(&self, document: &Document) -> Result<Vec<Diagnostic>, DiagnosticsError> {
         let bin = match &self.php_bin_path {
             Some(v) => v,
             None => "php",
@@ -80,7 +92,7 @@ impl PhpCliSyntaxDiagnosticCollector {
 
 struct TsSyntaxDiagnosticCollector {}
 impl DiagnosticCollector for TsSyntaxDiagnosticCollector {
-    fn collect(&self, _document: &TextDocumentItem) -> Result<Vec<Diagnostic>, DiagnosticsError> {
+    fn collect(&self, _document: &Document) -> Result<Vec<Diagnostic>, DiagnosticsError> {
         Ok(Vec::new())
     }
 }
@@ -96,7 +108,7 @@ struct DockerSyntaxDiagnosticCollector {
 }
 
 impl DiagnosticCollector for DockerSyntaxDiagnosticCollector {
-    fn collect(&self, document: &TextDocumentItem) -> Result<Vec<Diagnostic>, DiagnosticsError> {
+    fn collect(&self, document: &Document) -> Result<Vec<Diagnostic>, DiagnosticsError> {
         match Command::new("docker")
             .args([
                 "run",
@@ -162,7 +174,7 @@ impl DockerSyntaxDiagnosticCollector {
 
 struct DockerComposeSyntaxDiagnosticCollector {}
 impl DiagnosticCollector for DockerComposeSyntaxDiagnosticCollector {
-    fn collect(&self, _document: &TextDocumentItem) -> Result<Vec<Diagnostic>, DiagnosticsError> {
+    fn collect(&self, _document: &Document) -> Result<Vec<Diagnostic>, DiagnosticsError> {
         Ok(Vec::new())
     }
 }
@@ -211,7 +223,7 @@ impl SyntaxDiagnosticCollectorFactory {
 }
 
 pub fn collect_diagnostics(
-    document: &TextDocumentItem,
+    document: &Document,
     options: &RwLock<InitializeOptions>,
 ) -> Result<Vec<Diagnostic>, DiagnosticsError> {
     //TODO also add static analysis here
@@ -225,9 +237,9 @@ mod tests {
     use std::{io::Write, path::Path};
 
     use tempfile::TempDir;
-    use tower_lsp::lsp_types::{TextDocumentItem, Url};
+    use tower_lsp::lsp_types::Url;
 
-    use super::{DiagnosticCollector, PhpCliSyntaxDiagnosticCollector};
+    use super::{DiagnosticCollector, PhpCliSyntaxDiagnosticCollector, Document};
 
     #[test]
     fn test_find_parse_errors_using_php_cli() {
@@ -238,11 +250,8 @@ mod tests {
         let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
         let temp_dir_path = Path::new(&path_str);
         prepare_php_file(temp_dir_path, file_contents);
-        let document = TextDocumentItem::new(
+        let document = Document::new(
             Url::from_file_path(temp_dir_path).unwrap(),
-            String::from(""),
-            1,
-            file_contents.to_string(),
         );
 
         let collector = PhpCliSyntaxDiagnosticCollector::new(None);

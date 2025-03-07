@@ -1,6 +1,7 @@
 - [] Add docker compose runtime
 - [] Add custom error parsing
-- [] Run diagnostics on file safe/update
+- [x] Run diagnostics on file safe
+- [] Run diagnostics on file did change event
 - [] Improve go to variable declaration to be scoped based
 - [] Go to definition on docblocks https://github.com/MiroslavZaprazny/pherris/issues/5
 - [] Cache found class locations ??? https://github.com/MiroslavZaprazny/pherris/issues/2
