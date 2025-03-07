@@ -1,5 +1,6 @@
 use crate::analyzer::composer::load_autoload_class_map;
 use crate::analyzer::parser::Parser;
+use crate::handlers::notification::handle_did_change;
 use crate::handlers::notification::handle_did_open;
 use crate::handlers::request::handle_go_to_definition;
 use std::sync::RwLock;
@@ -82,5 +83,19 @@ impl LanguageServer for Backend {
             &self.state,
             &self.parser,
         ))
+    }
+
+    async fn did_save(&self, params: DidSaveTextDocumentParams) {
+        if let Some(text) = params.text {
+            handle_did_change(
+                &params.text_document.uri,
+                &text,
+                &self.state,
+                &self.parser,
+                &self.client,
+                &self.options,
+            )
+            .await
+        }
     }
 }
