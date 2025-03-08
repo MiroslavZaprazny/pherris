@@ -9,1199 +9,515 @@ use tempfile::TempDir;
 use tower_lsp::lsp_types::{GotoDefinitionResponse, Position, Url};
 
 #[test]
-fn test_find_variable_decleration() {
-    let file_contents = r#"<?php
+fn test_find_variable_declaration() {
+    let main_content = r#"<?php
         $variable = 0;
         echo $variable;
     "#;
-    let temp_dir = TempDir::new().expect("to initialize temp dir");
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
-    let temp_dir_path = Path::new(&path_str);
-    prepare_php_file(temp_dir_path, file_contents);
 
-    let uri = Url::from_file_path(temp_dir_path).unwrap();
-    let mut parser = Parser::new().expect("to create a parser");
-    let tree = parser.parse(file_contents).expect("to parse file");
-
-    let ast_map = DashMap::new();
-    ast_map.insert(uri.clone(), tree);
-    let document_map = DashMap::new();
-    document_map.insert(uri.clone(), String::from(file_contents));
-
-    let state = State::new(
-        ast_map,
-        document_map,
-        RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
-        DashMap::default(),
-    );
+    let (state, _temp_dir, target_uri, parser_lock) =
+        setup_test_environment(main_content, vec![], vec![]);
 
     let response =
-        handle_go_to_definition(&uri, &Position::new(2, 15), &state, &RwLock::new(parser));
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), uri.as_str());
-        assert_eq!(response.range.start.line, 1);
-        assert_eq!(response.range.start.character, 8);
-    } else {
-        panic!("response is not a location");
-    }
+        handle_go_to_definition(&target_uri, &Position::new(2, 15), &state, &parser_lock);
+
+    assert_definition_response(response, &target_uri, 1, 8);
 }
 
 #[test]
-fn test_find_shadowed_variable_decleration() {
-    let file_contents = r#"<?php
+fn test_find_shadowed_variable_declaration() {
+    let main_content = r#"<?php
         $variable = 0;
         $variable = 1;
         echo $variable;
     "#;
-    let temp_dir = TempDir::new().expect("to initialize temp dir");
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
-    let temp_dir_path = Path::new(&path_str);
-    prepare_php_file(temp_dir_path, file_contents);
 
-    let uri = Url::from_file_path(temp_dir_path).unwrap();
-    let mut parser = Parser::new().expect("to create a parser");
-    let tree = parser.parse(file_contents).expect("to parse file");
-
-    let ast_map = DashMap::new();
-    ast_map.insert(uri.clone(), tree);
-    let document_map = DashMap::new();
-    document_map.insert(uri.clone(), String::from(file_contents));
-
-    prepare_php_file(temp_dir_path, file_contents);
-    let state = State::new(
-        ast_map,
-        document_map,
-        RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
-        DashMap::default(),
-    );
+    let (state, _temp_dir, target_uri, parser_lock) =
+        setup_test_environment(main_content, vec![], vec![]);
 
     let response =
-        handle_go_to_definition(&uri, &Position::new(2, 15), &state, &RwLock::new(parser));
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), uri.as_str());
-        assert_eq!(response.range.start.line, 2);
-        assert_eq!(response.range.start.character, 8);
-    } else {
-        panic!("response is not a location");
-    }
+        handle_go_to_definition(&target_uri, &Position::new(2, 15), &state, &parser_lock);
+
+    assert_definition_response(response, &target_uri, 2, 8);
 }
 
 #[test]
 fn test_find_variable_definition_in_array_function() {
-    let file_contents = r#"<?php
+    let main_content = r#"<?php
         array_map(fn ($test) => $test, []);
     "#;
-    let temp_dir = TempDir::new().expect("to initialize temp dir");
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
-    let temp_dir_path = Path::new(&path_str);
-    prepare_php_file(temp_dir_path, file_contents);
 
-    let uri = Url::from_file_path(temp_dir_path).unwrap();
-    let mut parser = Parser::new().expect("to create a parser");
-    let tree = parser.parse(file_contents).expect("to parse file");
-
-    let ast_map = DashMap::new();
-    ast_map.insert(uri.clone(), tree);
-    let document_map = DashMap::new();
-    document_map.insert(uri.clone(), String::from(file_contents));
-
-    let state = State::new(
-        ast_map,
-        document_map,
-        RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
-        DashMap::default(),
-    );
+    let (state, _temp_dir, target_uri, parser_lock) =
+        setup_test_environment(main_content, vec![], vec![]);
 
     let response =
-        handle_go_to_definition(&uri, &Position::new(1, 35), &state, &RwLock::new(parser));
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), uri.as_str());
-        assert_eq!(response.range.start.line, 1);
-        assert_eq!(response.range.start.character, 22);
-    } else {
-        panic!("response is not a location");
-    }
+        handle_go_to_definition(&target_uri, &Position::new(1, 35), &state, &parser_lock);
+
+    assert_definition_response(response, &target_uri, 1, 22);
 }
 
 #[test]
 fn test_find_variable_definition_in_function() {
-    let file_contents = r#"<?php
+    let main_content = r#"<?php
         function ($test) {
             echo $test;
-        }
     "#;
-    let temp_dir = TempDir::new().expect("to initialize temp dir");
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
-    let temp_dir_path = Path::new(&path_str);
-    prepare_php_file(temp_dir_path, file_contents);
 
-    let uri = Url::from_file_path(temp_dir_path).unwrap();
-    let mut parser = Parser::new().expect("to create a parser");
-    let tree = parser.parse(file_contents).expect("to parse file");
-
-    let ast_map = DashMap::new();
-    ast_map.insert(uri.clone(), tree);
-    let document_map = DashMap::new();
-    document_map.insert(uri.clone(), String::from(file_contents));
-
-    let state = State::new(
-        ast_map,
-        document_map,
-        RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
-        DashMap::default(),
-    );
+    let (state, _temp_dir, target_uri, parser_lock) =
+        setup_test_environment(main_content, vec![], vec![]);
 
     let response =
-        handle_go_to_definition(&uri, &Position::new(2, 20), &state, &RwLock::new(parser));
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), uri.as_str());
-        assert_eq!(response.range.start.line, 1);
-        assert_eq!(response.range.start.character, 18);
-    } else {
-        panic!("response is not a location");
-    }
+        handle_go_to_definition(&target_uri, &Position::new(2, 20), &state, &parser_lock);
+
+    assert_definition_response(response, &target_uri, 1, 18);
 }
 
 #[test]
 fn test_find_variable_definition_in_foreach() {
-    let file_contents = r#"<?php
+    let main_content = r#"<?php
         $list = [];
         foreach ($list as $element) {
             echo $element;
         }
     "#;
-    let temp_dir = TempDir::new().expect("to initialize temp dir");
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
-    let temp_dir_path = Path::new(&path_str);
-    prepare_php_file(temp_dir_path, file_contents);
 
-    let uri = Url::from_file_path(temp_dir_path).unwrap();
-    let mut parser = Parser::new().expect("to create a parser");
-    let tree = parser.parse(file_contents).expect("to parse file");
-
-    let ast_map = DashMap::new();
-    ast_map.insert(uri.clone(), tree);
-    let document_map = DashMap::new();
-    document_map.insert(uri.clone(), String::from(file_contents));
-
-    let state = State::new(
-        ast_map,
-        document_map,
-        RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
-        DashMap::default(),
-    );
+    let (state, _temp_dir, target_uri, parser_lock) =
+        setup_test_environment(main_content, vec![], vec![]);
 
     let response =
-        handle_go_to_definition(&uri, &Position::new(3, 18), &state, &RwLock::new(parser));
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), uri.as_str());
-        assert_eq!(response.range.start.line, 2);
-        assert_eq!(response.range.start.character, 26);
-    } else {
-        panic!("response is not a location");
-    }
+        handle_go_to_definition(&target_uri, &Position::new(3, 18), &state, &parser_lock);
+
+    assert_definition_response(response, &target_uri, 2, 26);
 }
 
 #[test]
 fn test_find_variable_definition_in_foreach_pair() {
-    let file_contents = r#"<?php
+    let main_content = r#"<?php
         $list = [];
         foreach ($list as $key => $val) {
             echo $val;
             echo $key;
         }
     "#;
-    let temp_dir = TempDir::new().expect("to initialize temp dir");
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
-    let temp_dir_path = Path::new(&path_str);
-    prepare_php_file(temp_dir_path, file_contents);
 
-    let uri = Url::from_file_path(temp_dir_path).unwrap();
-    let mut parser = Parser::new().expect("to create a parser");
-    let tree = parser.parse(file_contents).expect("to parse file");
-
-    let ast_map = DashMap::new();
-    ast_map.insert(uri.clone(), tree);
-    let document_map = DashMap::new();
-    document_map.insert(uri.clone(), String::from(file_contents));
-
-    let state = State::new(
-        ast_map,
-        document_map,
-        RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
-        DashMap::default(),
-    );
+    let (state, _temp_dir, target_uri, parser_lock) =
+        setup_test_environment(main_content, vec![], vec![]);
 
     let response =
-        handle_go_to_definition(&uri, &Position::new(3, 18), &state, &RwLock::new(parser));
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), uri.as_str());
-        assert_eq!(response.range.start.line, 2);
-        assert_eq!(response.range.start.character, 34);
-    } else {
-        panic!("response is not a location");
-    }
+        handle_go_to_definition(&target_uri, &Position::new(3, 18), &state, &parser_lock);
 
-    let parser = Parser::new().expect("to create a parser");
+    assert_definition_response(response, &target_uri, 2, 34);
+
     let response =
-        handle_go_to_definition(&uri, &Position::new(4, 18), &state, &RwLock::new(parser));
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), uri.as_str());
-        assert_eq!(response.range.start.line, 2);
-        assert_eq!(response.range.start.character, 26);
-    } else {
-        panic!("response is not a location");
-    }
+        handle_go_to_definition(&target_uri, &Position::new(4, 18), &state, &parser_lock);
+
+    assert_definition_response(response, &target_uri, 2, 26);
 }
 
 #[test]
 fn test_find_class_definition_in_same_folder() {
-    let file_contents = r#"<?php
+    let main_content = r#"<?php
         function (MyClass $test) {
             echo $test;
         }
     "#;
-    let temp_dir = TempDir::new().expect("to initialize temp dir");
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
-    let temp_dir_path = Path::new(&path_str);
-    let target_uri = Url::from_file_path(temp_dir_path).unwrap();
 
-    let mut parser = Parser::new().expect("to create a parser");
-    let tree = parser.parse(file_contents).expect("to parse file");
-
-    let ast_map = DashMap::new();
-    ast_map.insert(target_uri.clone(), tree);
-    let document_map = DashMap::new();
-    document_map.insert(target_uri.clone(), String::from(file_contents));
-
-    let state = State::new(
-        ast_map,
-        document_map,
-        RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
-        DashMap::default(),
-    );
-
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let file_contents = r#"<?php
-        namespace MyNamespace;
-
-        class MyClass {}
-    "#;
-
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "class.php");
-    let temp_dir_path = Path::new(&path_str);
-    let class_uri = Url::from_file_path(temp_dir_path).unwrap();
-
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let response = handle_go_to_definition(
-        &target_uri,
-        &Position::new(1, 19),
-        &state,
-        &RwLock::new(parser),
-    );
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), class_uri.as_str());
-        assert_eq!(response.range.start.line, 3);
-        assert_eq!(response.range.start.character, 14);
-    } else {
-        panic!("response is not a location");
-    }
-}
-
-#[test]
-fn test_find_class_definition_in_same_folder_using_class_name_as_filename() {
-    let file_contents = r#"<?php
-        function (MyClass $test) {
-            echo $test;
-        }
-    "#;
-    let temp_dir = TempDir::new().expect("to initialize temp dir");
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
-    let temp_dir_path = Path::new(&path_str);
-    let target_uri = Url::from_file_path(temp_dir_path).unwrap();
-
-    let mut parser = Parser::new().expect("to create a parser");
-    let tree = parser.parse(file_contents).expect("to parse file");
-
-    let ast_map = DashMap::new();
-    ast_map.insert(target_uri.clone(), tree);
-    let document_map = DashMap::new();
-    document_map.insert(target_uri.clone(), String::from(file_contents));
-
-    let state = State::new(
-        ast_map,
-        document_map,
-        RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
-        DashMap::default(),
-    );
-
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let file_contents = r#"<?php
-        namespace MyNamespace;
-
-        class MyClass {}
-    "#;
-
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "MyClass.php");
-    let temp_dir_path = Path::new(&path_str);
-    let class_uri = Url::from_file_path(temp_dir_path).unwrap();
-
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let response = handle_go_to_definition(
-        &target_uri,
-        &Position::new(1, 19),
-        &state,
-        &RwLock::new(parser),
-    );
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), class_uri.as_str());
-        assert_eq!(response.range.start.line, 3);
-        assert_eq!(response.range.start.character, 14);
-    } else {
-        panic!("response is not a location");
-    }
-}
-
-#[test]
-fn test_find_class_definition_in_different_folder() {
-    let file_contents = r#"<?php
-        use MyApp\Testing\MyClass;
-        function (MyClass $test) {
-            echo $test;
-        }
-    "#;
-    let temp_dir = TempDir::new().expect("to initialize temp dir");
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
-    let temp_dir_path = Path::new(&path_str);
-    let target_uri = Url::from_file_path(temp_dir_path).unwrap();
-
-    let mut parser = Parser::new().expect("to create a parser");
-    let tree = parser.parse(file_contents).expect("to parse file");
-
-    let ast_map = DashMap::new();
-    ast_map.insert(target_uri.clone(), tree);
-    let document_map = DashMap::new();
-    document_map.insert(target_uri.clone(), String::from(file_contents));
-
-    let class_map = DashMap::new();
-    class_map.insert(
-        String::from("MyApp\\Testing\\MyClass"),
-        format!(
-            "{}/{}",
-            temp_dir.path().to_str().unwrap(),
-            "src/testing/class.php"
-        ),
-    );
-
-    let state = State::new(
-        ast_map,
-        document_map,
-        RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
-        class_map,
-    );
-
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let file_contents = r#"<?php
+    let class_content = r#"<?php
         namespace MyApp\Testing;
 
         class MyClass {}
     "#;
 
-    let path_str = format!(
+    let (state, temp_dir, target_uri, parser_lock) =
+        setup_test_environment(main_content, vec![("class.php", class_content)], vec![]);
+
+    let response =
+        handle_go_to_definition(&target_uri, &Position::new(1, 19), &state, &parser_lock);
+
+    let class_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), "class.php");
+    let class_uri = Url::from_file_path(Path::new(&class_path)).unwrap();
+
+    assert_definition_response(response, &class_uri, 3, 14);
+}
+
+#[test]
+fn test_find_class_definition_in_same_folder_using_class_name_as_filename() {
+    let main_content = r#"<?php
+        function (MyClass $test) {
+            echo $test;
+        }
+    "#;
+
+    let class_content = r#"<?php
+        namespace MyApp\Testing;
+
+        class MyClass {}
+    "#;
+
+    let (state, temp_dir, target_uri, parser_lock) =
+        setup_test_environment(main_content, vec![("MyClass.php", class_content)], vec![]);
+
+    let response =
+        handle_go_to_definition(&target_uri, &Position::new(1, 19), &state, &parser_lock);
+
+    let class_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), "MyClass.php");
+    let class_uri = Url::from_file_path(Path::new(&class_path)).unwrap();
+
+    assert_definition_response(response, &class_uri, 3, 14);
+}
+
+#[test]
+fn test_find_class_definition_in_different_folder() {
+    let main_content = r#"<?php
+        use MyApp\Testing\MyClass;
+        function (MyClass $test) {
+            echo $test;
+        }
+    "#;
+
+    let class_content = r#"<?php
+        namespace MyApp\Testing;
+
+        class MyClass {}
+    "#;
+
+    let (state, temp_dir, target_uri, parser_lock) = setup_test_environment(
+        main_content,
+        vec![("src/testing/class.php", class_content)],
+        vec![("MyApp\\Testing\\MyClass", "src/testing/class.php")],
+    );
+
+    let response =
+        handle_go_to_definition(&target_uri, &Position::new(2, 19), &state, &parser_lock);
+
+    let class_path = format!(
         "{}/{}",
         temp_dir.path().to_str().unwrap(),
         "src/testing/class.php"
     );
-    std::fs::create_dir_all(format!(
-        "{}/{}",
-        temp_dir.path().to_str().unwrap(),
-        "src/testing"
-    ))
-    .expect("to create dir");
-    let temp_dir_path = Path::new(&path_str);
-    let class_uri = Url::from_file_path(temp_dir_path).unwrap();
+    let class_uri = Url::from_file_path(Path::new(&class_path)).unwrap();
 
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let response = handle_go_to_definition(
-        &target_uri,
-        &Position::new(2, 19),
-        &state,
-        &RwLock::new(parser),
-    );
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), class_uri.as_str());
-        assert_eq!(response.range.start.line, 3);
-        assert_eq!(response.range.start.character, 14);
-    } else {
-        panic!("response is not a location");
-    }
+    assert_definition_response(response, &class_uri, 3, 14);
 }
 
 #[test]
 fn test_find_enum_definition_in_same_folder() {
-    let file_contents = r#"<?php
+    let main_content = r#"<?php
         function (MyEnum $test) {
             echo $test;
         }
     "#;
-    let temp_dir = TempDir::new().expect("to initialize temp dir");
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
-    let temp_dir_path = Path::new(&path_str);
-    let target_uri = Url::from_file_path(temp_dir_path).unwrap();
 
-    let mut parser = Parser::new().expect("to create a parser");
-    let tree = parser.parse(file_contents).expect("to parse file");
-
-    let ast_map = DashMap::new();
-    ast_map.insert(target_uri.clone(), tree);
-    let document_map = DashMap::new();
-    document_map.insert(target_uri.clone(), String::from(file_contents));
-
-    let state = State::new(
-        ast_map,
-        document_map,
-        RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
-        DashMap::default(),
-    );
-
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let file_contents = r#"<?php
-        namespace MyNamespace;
+    let class_content = r#"<?php
+        namespace MyApp\Testing;
 
         enum MyEnum {}
     "#;
 
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "enum.php");
-    let temp_dir_path = Path::new(&path_str);
-    let class_uri = Url::from_file_path(temp_dir_path).unwrap();
+    let (state, temp_dir, target_uri, parser_lock) =
+        setup_test_environment(main_content, vec![("class.php", class_content)], vec![]);
 
-    prepare_php_file(temp_dir_path, file_contents);
+    let response =
+        handle_go_to_definition(&target_uri, &Position::new(1, 19), &state, &parser_lock);
 
-    let response = handle_go_to_definition(
-        &target_uri,
-        &Position::new(1, 19),
-        &state,
-        &RwLock::new(parser),
-    );
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), class_uri.as_str());
-        assert_eq!(response.range.start.line, 3);
-        assert_eq!(response.range.start.character, 13);
-    } else {
-        panic!("response is not a location");
-    }
+    let class_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), "class.php");
+    let class_uri = Url::from_file_path(Path::new(&class_path)).unwrap();
+
+    assert_definition_response(response, &class_uri, 3, 13);
 }
 
 #[test]
 fn test_find_enum_definition_in_different_folder() {
-    let file_contents = r#"<?php
+    let main_content = r#"<?php
         use MyApp\Testing\MyEnum;
         function (MyEnum $test) {
             echo $test;
         }
     "#;
-    let temp_dir = TempDir::new().expect("to initialize temp dir");
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
-    let temp_dir_path = Path::new(&path_str);
-    let target_uri = Url::from_file_path(temp_dir_path).unwrap();
 
-    let mut parser = Parser::new().expect("to create a parser");
-    let tree = parser.parse(file_contents).expect("to parse file");
-
-    let ast_map = DashMap::new();
-    ast_map.insert(target_uri.clone(), tree);
-    let document_map = DashMap::new();
-    document_map.insert(target_uri.clone(), String::from(file_contents));
-
-    let class_map = DashMap::new();
-    class_map.insert(
-        String::from("MyApp\\Testing\\MyEnum"),
-        format!(
-            "{}/{}",
-            temp_dir.path().to_str().unwrap(),
-            "src/testing/enum.php"
-        ),
-    );
-
-    let state = State::new(
-        ast_map,
-        document_map,
-        RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
-        class_map,
-    );
-
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let file_contents = r#"<?php
+    let class_content = r#"<?php
         namespace MyApp\Testing;
 
         enum MyEnum {}
     "#;
 
-    let path_str = format!(
+    let (state, temp_dir, target_uri, parser_lock) = setup_test_environment(
+        main_content,
+        vec![("src/testing/class.php", class_content)],
+        vec![("MyApp\\Testing\\MyEnum", "src/testing/class.php")],
+    );
+
+    let response =
+        handle_go_to_definition(&target_uri, &Position::new(2, 19), &state, &parser_lock);
+
+    let class_path = format!(
         "{}/{}",
         temp_dir.path().to_str().unwrap(),
-        "src/testing/enum.php"
+        "src/testing/class.php"
     );
-    std::fs::create_dir_all(format!(
-        "{}/{}",
-        temp_dir.path().to_str().unwrap(),
-        "src/testing"
-    ))
-    .expect("to create dir");
-    let temp_dir_path = Path::new(&path_str);
-    let class_uri = Url::from_file_path(temp_dir_path).unwrap();
+    let class_uri = Url::from_file_path(Path::new(&class_path)).unwrap();
 
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let response = handle_go_to_definition(
-        &target_uri,
-        &Position::new(2, 19),
-        &state,
-        &RwLock::new(parser),
-    );
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), class_uri.as_str());
-        assert_eq!(response.range.start.line, 3);
-        assert_eq!(response.range.start.character, 13);
-    } else {
-        panic!("response is not a location");
-    }
+    assert_definition_response(response, &class_uri, 3, 13);
 }
 
 #[test]
 fn test_find_interface_definition_in_same_folder() {
-    let file_contents = r#"<?php
+    let main_content = r#"<?php
         function (MyInterface $test) {
             echo $test;
         }
     "#;
-    let temp_dir = TempDir::new().expect("to initialize temp dir");
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
-    let temp_dir_path = Path::new(&path_str);
-    let target_uri = Url::from_file_path(temp_dir_path).unwrap();
 
-    let mut parser = Parser::new().expect("to create a parser");
-    let tree = parser.parse(file_contents).expect("to parse file");
-
-    let ast_map = DashMap::new();
-    ast_map.insert(target_uri.clone(), tree);
-    let document_map = DashMap::new();
-    document_map.insert(target_uri.clone(), String::from(file_contents));
-
-    let state = State::new(
-        ast_map,
-        document_map,
-        RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
-        DashMap::default(),
-    );
-
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let file_contents = r#"<?php
-        namespace MyNamespace;
+    let class_content = r#"<?php
+        namespace MyApp\Testing;
 
         interface MyInterface {}
     "#;
 
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "interface.php");
-    let temp_dir_path = Path::new(&path_str);
-    let class_uri = Url::from_file_path(temp_dir_path).unwrap();
+    let (state, temp_dir, target_uri, parser_lock) =
+        setup_test_environment(main_content, vec![("class.php", class_content)], vec![]);
 
-    prepare_php_file(temp_dir_path, file_contents);
+    let response =
+        handle_go_to_definition(&target_uri, &Position::new(1, 19), &state, &parser_lock);
 
-    let response = handle_go_to_definition(
-        &target_uri,
-        &Position::new(1, 19),
-        &state,
-        &RwLock::new(parser),
-    );
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), class_uri.as_str());
-        assert_eq!(response.range.start.line, 3);
-        assert_eq!(response.range.start.character, 18);
-    } else {
-        panic!("response is not a location");
-    }
+    let class_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), "class.php");
+    let class_uri = Url::from_file_path(Path::new(&class_path)).unwrap();
+
+    assert_definition_response(response, &class_uri, 3, 18);
 }
 
 #[test]
 fn test_find_interface_definition_in_different_folder() {
-    let file_contents = r#"<?php
+    let main_content = r#"<?php
         use MyApp\Testing\MyInterface;
         function (MyInterface $test) {
             echo $test;
         }
     "#;
-    let temp_dir = TempDir::new().expect("to initialize temp dir");
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
-    let temp_dir_path = Path::new(&path_str);
-    let target_uri = Url::from_file_path(temp_dir_path).unwrap();
 
-    let mut parser = Parser::new().expect("to create a parser");
-    let tree = parser.parse(file_contents).expect("to parse file");
-
-    let ast_map = DashMap::new();
-    ast_map.insert(target_uri.clone(), tree);
-    let document_map = DashMap::new();
-    document_map.insert(target_uri.clone(), String::from(file_contents));
-
-    let class_map = DashMap::new();
-    class_map.insert(
-        String::from("MyApp\\Testing\\MyInterface"),
-        format!(
-            "{}/{}",
-            temp_dir.path().to_str().unwrap(),
-            "src/testing/interface.php"
-        ),
-    );
-
-    let state = State::new(
-        ast_map,
-        document_map,
-        RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
-        class_map,
-    );
-
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let file_contents = r#"<?php
+    let class_content = r#"<?php
         namespace MyApp\Testing;
 
         interface MyInterface {}
     "#;
 
-    let path_str = format!(
+    let (state, temp_dir, target_uri, parser_lock) = setup_test_environment(
+        main_content,
+        vec![("src/testing/class.php", class_content)],
+        vec![("MyApp\\Testing\\MyInterface", "src/testing/class.php")],
+    );
+
+    let response =
+        handle_go_to_definition(&target_uri, &Position::new(2, 19), &state, &parser_lock);
+
+    let class_path = format!(
         "{}/{}",
         temp_dir.path().to_str().unwrap(),
-        "src/testing/interface.php"
+        "src/testing/class.php"
     );
-    std::fs::create_dir_all(format!(
-        "{}/{}",
-        temp_dir.path().to_str().unwrap(),
-        "src/testing"
-    ))
-    .expect("to create dir");
-    let temp_dir_path = Path::new(&path_str);
-    let class_uri = Url::from_file_path(temp_dir_path).unwrap();
+    let class_uri = Url::from_file_path(Path::new(&class_path)).unwrap();
 
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let response = handle_go_to_definition(
-        &target_uri,
-        &Position::new(2, 19),
-        &state,
-        &RwLock::new(parser),
-    );
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), class_uri.as_str());
-        assert_eq!(response.range.start.line, 3);
-        assert_eq!(response.range.start.character, 18);
-    } else {
-        panic!("response is not a location");
-    }
+    assert_definition_response(response, &class_uri, 3, 18);
 }
 
 #[test]
 fn test_go_to_class_definition_on_use_statement() {
-    let file_contents = r#"<?php
+    let main_content = r#"<?php
         use MyApp\Testing\MyClass;
         function (MyClass $test) {
             echo $test;
         }
     "#;
-    let temp_dir = TempDir::new().expect("to initialize temp dir");
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
-    let temp_dir_path = Path::new(&path_str);
-    let target_uri = Url::from_file_path(temp_dir_path).unwrap();
 
-    let mut parser = Parser::new().expect("to create a parser");
-    let tree = parser.parse(file_contents).expect("to parse file");
-
-    let ast_map = DashMap::new();
-    ast_map.insert(target_uri.clone(), tree);
-    let document_map = DashMap::new();
-    document_map.insert(target_uri.clone(), String::from(file_contents));
-
-    let class_map = DashMap::new();
-    class_map.insert(
-        String::from("MyApp\\Testing\\MyClass"),
-        format!(
-            "{}/{}",
-            temp_dir.path().to_str().unwrap(),
-            "src/testing/class.php"
-        ),
-    );
-
-    let state = State::new(
-        ast_map,
-        document_map,
-        RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
-        class_map,
-    );
-
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let file_contents = r#"<?php
+    let class_content = r#"<?php
         namespace MyApp\Testing;
 
         class MyClass {}
     "#;
 
-    let path_str = format!(
+    let (state, temp_dir, target_uri, parser_lock) = setup_test_environment(
+        main_content,
+        vec![("src/testing/class.php", class_content)],
+        vec![("MyApp\\Testing\\MyClass", "src/testing/class.php")],
+    );
+
+    let response =
+        handle_go_to_definition(&target_uri, &Position::new(1, 26), &state, &parser_lock);
+
+    let class_path = format!(
         "{}/{}",
         temp_dir.path().to_str().unwrap(),
         "src/testing/class.php"
     );
-    std::fs::create_dir_all(format!(
-        "{}/{}",
-        temp_dir.path().to_str().unwrap(),
-        "src/testing"
-    ))
-    .expect("to create dir");
-    let temp_dir_path = Path::new(&path_str);
-    let class_uri = Url::from_file_path(temp_dir_path).unwrap();
+    let class_uri = Url::from_file_path(Path::new(&class_path)).unwrap();
 
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let response = handle_go_to_definition(
-        &target_uri,
-        &Position::new(1, 26),
-        &state,
-        &RwLock::new(parser),
-    );
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), class_uri.as_str());
-        assert_eq!(response.range.start.line, 3);
-        assert_eq!(response.range.start.character, 14);
-    } else {
-        panic!("response is not a location");
-    }
+    assert_definition_response(response, &class_uri, 3, 14);
 }
 
 #[test]
 fn test_go_to_class_definition_on_constant_access_expression_within_same_folder() {
-    let file_contents = r#"<?php
+    let main_content = r#"<?php
         echo MyClass::class;
     "#;
-    let temp_dir = TempDir::new().expect("to initialize temp dir");
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
-    let temp_dir_path = Path::new(&path_str);
-    let target_uri = Url::from_file_path(temp_dir_path).unwrap();
 
-    let mut parser = Parser::new().expect("to create a parser");
-    let tree = parser.parse(file_contents).expect("to parse file");
+    let class_content = r#"<?php
+        namespace MyApp\Testing;
 
-    let ast_map = DashMap::new();
-    ast_map.insert(target_uri.clone(), tree);
-    let document_map = DashMap::new();
-    document_map.insert(target_uri.clone(), String::from(file_contents));
-
-    let state = State::new(
-        ast_map,
-        document_map,
-        RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
-        DashMap::default(),
-    );
-
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let file_contents = r#"<?php
-        namespace MyNamespace;
-
-        class MyClass {
-            public static function test(): string
-            {
-                return "test";
-            }
-        }
+        class MyClass {}
     "#;
 
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "class.php");
-    let temp_dir_path = Path::new(&path_str);
-    let class_uri = Url::from_file_path(temp_dir_path).unwrap();
+    let (state, temp_dir, target_uri, parser_lock) =
+        setup_test_environment(main_content, vec![("class.php", class_content)], vec![]);
 
-    prepare_php_file(temp_dir_path, file_contents);
+    let response =
+        handle_go_to_definition(&target_uri, &Position::new(1, 13), &state, &parser_lock);
 
-    let response = handle_go_to_definition(
-        &target_uri,
-        &Position::new(1, 13),
-        &state,
-        &RwLock::new(parser),
-    );
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), class_uri.as_str());
-        assert_eq!(response.range.start.line, 3);
-        assert_eq!(response.range.start.character, 14);
-    } else {
-        panic!("response is not a location");
-    }
+    let class_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), "class.php");
+    let class_uri = Url::from_file_path(Path::new(&class_path)).unwrap();
+
+    assert_definition_response(response, &class_uri, 3, 14);
 }
 
 #[test]
 fn test_go_to_class_definition_on_constant_access_expression() {
-    let file_contents = r#"<?php
+    let main_content = r#"<?php
         use MyApp\Testing\MyClass;
         echo MyClass::class;
     "#;
-    let temp_dir = TempDir::new().expect("to initialize temp dir");
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
-    let temp_dir_path = Path::new(&path_str);
-    let target_uri = Url::from_file_path(temp_dir_path).unwrap();
 
-    let mut parser = Parser::new().expect("to create a parser");
-    let tree = parser.parse(file_contents).expect("to parse file");
-
-    let ast_map = DashMap::new();
-    ast_map.insert(target_uri.clone(), tree);
-    let document_map = DashMap::new();
-    document_map.insert(target_uri.clone(), String::from(file_contents));
-
-    let class_map = DashMap::new();
-    class_map.insert(
-        String::from("MyApp\\Testing\\MyClass"),
-        format!(
-            "{}/{}",
-            temp_dir.path().to_str().unwrap(),
-            "src/testing/class.php"
-        ),
-    );
-
-    let state = State::new(
-        ast_map,
-        document_map,
-        RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
-        class_map,
-    );
-
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let file_contents = r#"<?php
+    let class_content = r#"<?php
         namespace MyApp\Testing;
 
-        class MyClass {
-            public static function test(): string
-            {
-                return "test";
-            }
-        }
+        class MyClass {}
     "#;
 
-    let path_str = format!(
+    let (state, temp_dir, target_uri, parser_lock) = setup_test_environment(
+        main_content,
+        vec![("src/testing/class.php", class_content)],
+        vec![("MyApp\\Testing\\MyClass", "src/testing/class.php")],
+    );
+
+    let response =
+        handle_go_to_definition(&target_uri, &Position::new(2, 13), &state, &parser_lock);
+
+    let class_path = format!(
         "{}/{}",
         temp_dir.path().to_str().unwrap(),
         "src/testing/class.php"
     );
-    std::fs::create_dir_all(format!(
-        "{}/{}",
-        temp_dir.path().to_str().unwrap(),
-        "src/testing"
-    ))
-    .expect("to create dir");
-    let temp_dir_path = Path::new(&path_str);
-    let class_uri = Url::from_file_path(temp_dir_path).unwrap();
+    let class_uri = Url::from_file_path(Path::new(&class_path)).unwrap();
 
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let response = handle_go_to_definition(
-        &target_uri,
-        &Position::new(2, 13),
-        &state,
-        &RwLock::new(parser),
-    );
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), class_uri.as_str());
-        assert_eq!(response.range.start.line, 3);
-        assert_eq!(response.range.start.character, 14);
-    } else {
-        panic!("response is not a location");
-    }
+    assert_definition_response(response, &class_uri, 3, 14);
 }
 
 #[test]
 fn test_go_to_class_definition_on_inherited_classes_within_same_folder() {
-    let file_contents = r#"<?php
+    let main_content = r#"<?php
         class MyClass extends BaseClass {}
     "#;
-    let temp_dir = TempDir::new().expect("to initialize temp dir");
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
-    let temp_dir_path = Path::new(&path_str);
-    let target_uri = Url::from_file_path(temp_dir_path).unwrap();
 
-    let mut parser = Parser::new().expect("to create a parser");
-    let tree = parser.parse(file_contents).expect("to parse file");
-
-    let ast_map = DashMap::new();
-    ast_map.insert(target_uri.clone(), tree);
-    let document_map = DashMap::new();
-    document_map.insert(target_uri.clone(), String::from(file_contents));
-
-    let state = State::new(
-        ast_map,
-        document_map,
-        RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
-        DashMap::default(),
-    );
-
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let file_contents = r#"<?php
-        namespace MyNamespace;
+    let class_content = r#"<?php
+        namespace MyApp\Testing;
 
         class BaseClass {}
     "#;
 
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "class.php");
-    let temp_dir_path = Path::new(&path_str);
-    let class_uri = Url::from_file_path(temp_dir_path).unwrap();
+    let (state, temp_dir, target_uri, parser_lock) =
+        setup_test_environment(main_content, vec![("class.php", class_content)], vec![]);
 
-    prepare_php_file(temp_dir_path, file_contents);
+    let response =
+        handle_go_to_definition(&target_uri, &Position::new(1, 30), &state, &parser_lock);
 
-    let response = handle_go_to_definition(
-        &target_uri,
-        &Position::new(1, 30),
-        &state,
-        &RwLock::new(parser),
-    );
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), class_uri.as_str());
-        assert_eq!(response.range.start.line, 3);
-        assert_eq!(response.range.start.character, 14);
-    } else {
-        panic!("response is not a location");
-    }
+    let class_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), "class.php");
+    let class_uri = Url::from_file_path(Path::new(&class_path)).unwrap();
+
+    assert_definition_response(response, &class_uri, 3, 14);
 }
 
 #[test]
 fn test_go_to_class_definition_on_inherited_classes() {
-    let file_contents = r#"<?php
+    let main_content = r#"<?php
         use MyApp\Testing\BaseClass;
         class MyClass extends BaseClass {}
     "#;
-    let temp_dir = TempDir::new().expect("to initialize temp dir");
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
-    let temp_dir_path = Path::new(&path_str);
-    let target_uri = Url::from_file_path(temp_dir_path).unwrap();
 
-    let mut parser = Parser::new().expect("to create a parser");
-    let tree = parser.parse(file_contents).expect("to parse file");
-
-    let ast_map = DashMap::new();
-    ast_map.insert(target_uri.clone(), tree);
-    let document_map = DashMap::new();
-    document_map.insert(target_uri.clone(), String::from(file_contents));
-
-    let class_map = DashMap::new();
-    class_map.insert(
-        String::from("MyApp\\Testing\\BaseClass"),
-        format!(
-            "{}/{}",
-            temp_dir.path().to_str().unwrap(),
-            "src/testing/class.php"
-        ),
-    );
-
-    let state = State::new(
-        ast_map,
-        document_map,
-        RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
-        class_map,
-    );
-
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let file_contents = r#"<?php
+    let class_content = r#"<?php
         namespace MyApp\Testing;
 
         class BaseClass {}
     "#;
 
-    let path_str = format!(
+    let (state, temp_dir, target_uri, parser_lock) = setup_test_environment(
+        main_content,
+        vec![("src/testing/class.php", class_content)],
+        vec![("MyApp\\Testing\\BaseClass", "src/testing/class.php")],
+    );
+
+    let response =
+        handle_go_to_definition(&target_uri, &Position::new(2, 30), &state, &parser_lock);
+
+    let class_path = format!(
         "{}/{}",
         temp_dir.path().to_str().unwrap(),
         "src/testing/class.php"
     );
-    std::fs::create_dir_all(format!(
-        "{}/{}",
-        temp_dir.path().to_str().unwrap(),
-        "src/testing"
-    ))
-    .expect("to create dir");
-    let temp_dir_path = Path::new(&path_str);
-    let class_uri = Url::from_file_path(temp_dir_path).unwrap();
+    let class_uri = Url::from_file_path(Path::new(&class_path)).unwrap();
 
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let response = handle_go_to_definition(
-        &target_uri,
-        &Position::new(2, 30),
-        &state,
-        &RwLock::new(parser),
-    );
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), class_uri.as_str());
-        assert_eq!(response.range.start.line, 3);
-        assert_eq!(response.range.start.character, 14);
-    } else {
-        panic!("response is not a location");
-    }
+    assert_definition_response(response, &class_uri, 3, 14);
 }
 
 #[test]
 fn test_go_to_interface_definition_on_implements_statement_within_same_folder() {
-    let file_contents = r#"<?php
+    let main_content = r#"<?php
         class MyClass implements SomeInterface {}
     "#;
-    let temp_dir = TempDir::new().expect("to initialize temp dir");
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
-    let temp_dir_path = Path::new(&path_str);
-    let target_uri = Url::from_file_path(temp_dir_path).unwrap();
 
-    let mut parser = Parser::new().expect("to create a parser");
-    let tree = parser.parse(file_contents).expect("to parse file");
-
-    let ast_map = DashMap::new();
-    ast_map.insert(target_uri.clone(), tree);
-    let document_map = DashMap::new();
-    document_map.insert(target_uri.clone(), String::from(file_contents));
-
-    let state = State::new(
-        ast_map,
-        document_map,
-        RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
-        DashMap::default(),
-    );
-
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let file_contents = r#"<?php
-        namespace MyNamespace;
-
-        interface SomeInterface {}
-    "#;
-
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "interface.php");
-    let temp_dir_path = Path::new(&path_str);
-    let class_uri = Url::from_file_path(temp_dir_path).unwrap();
-
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let response = handle_go_to_definition(
-        &target_uri,
-        &Position::new(1, 37),
-        &state,
-        &RwLock::new(parser),
-    );
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), class_uri.as_str());
-        assert_eq!(response.range.start.line, 3);
-        assert_eq!(response.range.start.character, 18);
-    } else {
-        panic!("response is not a location");
-    }
-}
-
-#[test]
-fn test_go_to_interface_definition_on_implements_statement() {
-    let file_contents = r#"<?php
-        use MyApp\Testing\SomeInterface;
-        class MyClass implements SomeInterface {}
-    "#;
-    let temp_dir = TempDir::new().expect("to initialize temp dir");
-    let path_str = format!("{}/{}", temp_dir.path().to_str().unwrap(), "test.php");
-    let temp_dir_path = Path::new(&path_str);
-    let target_uri = Url::from_file_path(temp_dir_path).unwrap();
-
-    let mut parser = Parser::new().expect("to create a parser");
-    let tree = parser.parse(file_contents).expect("to parse file");
-
-    let ast_map = DashMap::new();
-    ast_map.insert(target_uri.clone(), tree);
-    let document_map = DashMap::new();
-    document_map.insert(target_uri.clone(), String::from(file_contents));
-
-    let class_map = DashMap::new();
-    class_map.insert(
-        String::from("MyApp\\Testing\\SomeInterface"),
-        format!(
-            "{}/{}",
-            temp_dir.path().to_str().unwrap(),
-            "src/testing/interface.php"
-        ),
-    );
-
-    let state = State::new(
-        ast_map,
-        document_map,
-        RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
-        class_map,
-    );
-
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let file_contents = r#"<?php
+    let class_content = r#"<?php
         namespace MyApp\Testing;
 
         interface SomeInterface {}
     "#;
 
-    let path_str = format!(
+    let (state, temp_dir, target_uri, parser_lock) =
+        setup_test_environment(main_content, vec![("interface.php", class_content)], vec![]);
+
+    let response =
+        handle_go_to_definition(&target_uri, &Position::new(1, 37), &state, &parser_lock);
+
+    let class_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), "interface.php");
+    let class_uri = Url::from_file_path(Path::new(&class_path)).unwrap();
+    assert_definition_response(response, &class_uri, 3, 18);
+}
+
+#[test]
+fn test_go_to_interface_definition_on_implements_statement() {
+    let main_content = r#"<?php
+        use MyApp\Testing\SomeInterface;
+        class MyClass implements SomeInterface {}
+    "#;
+
+    let class_content = r#"<?php
+        namespace MyApp\Testing;
+
+        interface SomeInterface {}
+    "#;
+
+    let (state, temp_dir, target_uri, parser_lock) = setup_test_environment(
+        main_content,
+        vec![("src/testing/interface.php", class_content)],
+        vec![("MyApp\\Testing\\SomeInterface", "src/testing/interface.php")],
+    );
+
+    let response =
+        handle_go_to_definition(&target_uri, &Position::new(2, 37), &state, &parser_lock);
+
+    let class_path = format!(
         "{}/{}",
         temp_dir.path().to_str().unwrap(),
         "src/testing/interface.php"
     );
-    std::fs::create_dir_all(format!(
-        "{}/{}",
-        temp_dir.path().to_str().unwrap(),
-        "src/testing"
-    ))
-    .expect("to create dir");
-    let temp_dir_path = Path::new(&path_str);
-    let class_uri = Url::from_file_path(temp_dir_path).unwrap();
-
-    prepare_php_file(temp_dir_path, file_contents);
-
-    let response = handle_go_to_definition(
-        &target_uri,
-        &Position::new(2, 37),
-        &state,
-        &RwLock::new(parser),
-    );
-    assert!(response.is_some());
-    if let GotoDefinitionResponse::Scalar(response) = response.unwrap() {
-        assert_eq!(response.uri.as_str(), class_uri.as_str());
-        assert_eq!(response.range.start.line, 3);
-        assert_eq!(response.range.start.character, 18);
-    } else {
-        panic!("response is not a location");
-    }
+    let class_uri = Url::from_file_path(Path::new(&class_path)).unwrap();
+    assert_definition_response(response, &class_uri, 3, 18);
 }
 
 #[test]
