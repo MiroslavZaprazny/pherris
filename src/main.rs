@@ -4,7 +4,6 @@ use pherris::lsp::config::InitializeOptions;
 use pherris::lsp::state::State;
 use std::sync::RwLock;
 use tower_lsp::{LspService, Server};
-use tracing::debug;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::fmt::Subscriber;
 
@@ -21,7 +20,6 @@ async fn main() {
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("to set subscriber");
 
-    debug!("Starting lsp server");
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
     let (service, socket) = LspService::new(|client| Backend {

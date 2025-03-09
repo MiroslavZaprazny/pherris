@@ -8,7 +8,6 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::Client;
 use tower_lsp::LanguageServer;
-use tracing::debug;
 
 use super::config::InitializeOptions;
 use super::state::State;
@@ -23,8 +22,6 @@ pub struct Backend {
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
-        debug!("intialize notification");
-
         if let Some(root_uri) = params.root_uri {
             let mut guard = self.state.root_path.write().unwrap();
             *guard = String::from(root_uri.path());

@@ -1,8 +1,7 @@
-use std::{path::PathBuf, sync::RwLock};
+use std::{path::Path, sync::RwLock};
 
 use streaming_iterator::StreamingIterator;
 use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, Url};
-use tracing::debug;
 use tree_sitter::{Node, Query, QueryCursor, Tree};
 
 use crate::{
@@ -11,7 +10,7 @@ use crate::{
         query::{named_type_declaration_query, namespace_use_query, variable_declaration_query},
         utils::{
             find_nearest_location, get_node_for_point, get_point_from_position,
-            get_position_from_point, print_tree,
+            get_position_from_point,
         },
     },
     lsp::state::State,
@@ -33,9 +32,6 @@ pub fn handle_go_to_definition(
     let parent = current_node
         .parent()
         .expect("to get parent of current node");
-
-    debug!("Parent: {}", parent.kind());
-    debug!("Current node: {}", parent.kind());
 
     match parent.kind() {
         "variable_name" | "member_access_expression" => {
@@ -82,7 +78,6 @@ fn find_named_type_definition(
 
     let file_path = current_uri.to_file_path().unwrap();
     let current_dir = file_path.parent().unwrap();
-    debug!("Current directory, {:?}", current_dir);
 
     while let Some(match_) = matches.next() {
         for capture in match_.captures {
@@ -91,9 +86,6 @@ fn find_named_type_definition(
                 .utf8_text(document.as_bytes())
                 .expect("to get use statement");
 
-            debug!("FQN: {}", fqn);
-            debug!("named type name: {}", named_type_name);
-
             let path = state.class_map.get(fqn);
 
             if path.is_none() {
@@ -101,11 +93,10 @@ fn find_named_type_definition(
             }
 
             if fqn.ends_with(format!("\\{}", named_type_name).as_str()) {
-                debug!("found: {}", fqn);
                 let path = path.unwrap();
 
                 if let Some(location) = get_named_type_declaration_location(
-                    &PathBuf::from(&path.to_owned()),
+                    Path::new(path.as_str()),
                     named_type_name,
                     parser,
                 ) {
@@ -115,9 +106,16 @@ fn find_named_type_definition(
         }
     }
 
+    // first try to check the current_dir/class_name.php
+    let str_path = &format!("{}/{}.php", current_dir.to_str().unwrap(), named_type_name);
+    let path = Path::new(str_path);
+    if path.exists() {
+        if let Some(location) = get_named_type_declaration_location(path, named_type_name, parser) {
+            return Some(location);
+        }
+    }
+
     //if there is no use statement try searching the current directory for the class
-    // TODO: maybe instead of searching all of the files we could assume that
-    // it would live at current_dir/class_name?
     let files = std::fs::read_dir(current_dir).expect("to read files");
     for entry in files {
         if entry.is_err() {
@@ -143,7 +141,7 @@ fn find_named_type_definition(
 
 //TODO move to analyzer crate
 fn get_named_type_declaration_location(
-    path: &PathBuf,
+    path: &Path,
     name: &str,
     parser: &RwLock<Parser>,
 ) -> Option<Location> {
@@ -158,7 +156,6 @@ fn get_named_type_declaration_location(
         .unwrap()
         .parse(content.clone())
         .expect("to parse file");
-    print_tree(&tree);
 
     if let Some(location) = capture_named_type_location(
         &named_type_declaration_query().expect("to create query"),
@@ -178,7 +175,7 @@ fn capture_named_type_location(
     name: &str,
     tree: &Tree,
     content: &[u8],
-    path: &PathBuf,
+    path: &Path,
 ) -> Option<Location> {
     let mut cursor = QueryCursor::new();
     let mut matches = cursor.matches(query, tree.root_node(), content);
@@ -224,7 +221,6 @@ fn find_variable_declaration(
 
     let locations =
         match_variable_locations_for_query(var_name, &var_declare_query, tree, document, uri);
-    debug!("Locations: {:?}", locations);
 
     find_nearest_location(
         get_position_from_point(&current_node.start_position()),
@@ -262,8 +258,6 @@ fn match_variable_locations_for_query(
             }
         }
     }
-
-    debug!("{:?}", out);
 
     out
 }

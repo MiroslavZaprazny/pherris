@@ -5,4 +5,5 @@
 - [] Improve go to variable declaration to be scoped based
 - [] Go to definition on docblocks https://github.com/MiroslavZaprazny/pherris/issues/5
 - [] Cache found class locations ??? https://github.com/MiroslavZaprazny/pherris/issues/2
-- [] Take a better guess when finding class locations in the same directory https://github.com/MiroslavZaprazny/pherris/blob/master/src/handlers/request.rs#L124
+- [x] Take a better guess when finding class locations in the same directory https://github.com/MiroslavZaprazny/pherris/blob/master/src/handlers/request.rs#L124
+- [] Add test for docker diagnostic runtime
