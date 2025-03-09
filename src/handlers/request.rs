@@ -96,7 +96,7 @@ fn find_named_type_definition(
                 let path = path.unwrap();
 
                 if let Some(location) = get_named_type_declaration_location(
-                    &Path::new(&path.to_owned()),
+                    Path::new(path.as_str()),
                     named_type_name,
                     parser,
                 ) {
