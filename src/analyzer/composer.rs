@@ -7,6 +7,8 @@ use crate::lsp::state::State;
 
 use super::parser::Parser;
 
+//TODO: if the autoload map is not present we should probably
+//index the project ourselfs
 pub fn load_autoload_class_map(parser: &RwLock<Parser>, state: &State) {
     let root_path = state.root_path.read().unwrap();
     let autoload_classmap_path = format!("{}/vendor/composer/autoload_classmap.php", *root_path);
