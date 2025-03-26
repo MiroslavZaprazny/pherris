@@ -59,12 +59,7 @@ impl LanguageServer for Backend {
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        handle_did_open(
-            &params.text_document,
-            &self.state,
-            &self.parser,
-        )
-        .await
+        handle_did_open(&params.text_document, &self.state, &self.parser).await
     }
 
     async fn goto_definition(
@@ -79,6 +74,5 @@ impl LanguageServer for Backend {
         ))
     }
 
-    async fn did_save(&self, _params: DidSaveTextDocumentParams) {
-    }
+    async fn did_save(&self, _params: DidSaveTextDocumentParams) {}
 }
