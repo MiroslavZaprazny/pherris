@@ -7,8 +7,10 @@ edition = "2021"
 
 [dependencies]
 dashmap = "6.1.0"
+mago-ast = "0.22.1"
 mago-interner = "0.22.1"
 mago-lexer = "0.22.1"
+mago-names = "0.22.1"
 mago-parser = "0.22.1"
 mago-source = "0.22.1"
 mago-span = "0.22.1"
