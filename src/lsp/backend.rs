@@ -53,8 +53,8 @@ impl LanguageServer for Backend {
         handle_did_open(
             &params.text_document,
             &self.state,
-            &self.parser,
             &self.client,
+            &self.parser,
         )
         .await
     }

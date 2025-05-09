@@ -1,13 +1,10 @@
-use mago_ast::{ClassLikeMember, Node, NodeKind};
+use std::sync::RwLock;
+
 use mago_interner::ThreadedInterner;
 use mago_lexer::input::Input;
-use mago_names::Names;
 use mago_parser::parse;
 use mago_source::{Source, SourceIdentifier};
-use mago_span::{HasPosition, HasSpan};
-use std::sync::RwLock;
-use tracing::debug;
-use tracing_subscriber::field::debug;
+use mago_span::HasSpan;
 
 use tower_lsp::{
     lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range, TextDocumentItem},
@@ -16,69 +13,20 @@ use tower_lsp::{
 
 use crate::{analyzer::parser::Parser, lsp::state::State};
 
-fn test(node: &Node, contents: &str, source: &Source, current: &Position) {
-    debug!("Kind: {:?}", node.kind());
-
-    if let Node::ClassLikeMember(n) = node {
-        debug!("class like node: {:?}", n);
-        let text = &contents[node.start_position().offset()..node.end_position().offset()];
-        let range = Range {
-            start: Position {
-                line: (source.line_number(node.start_position().offset())) as u32,
-                character: (source.column_number(node.start_position().offset())) as u32,
-            },
-            end: Position {
-                line: (source.line_number(node.end_position().offset())) as u32,
-                character: (source.column_number(node.end_position().offset())) as u32,
-            },
-        };
-        if range.start.line <= current.line && range.end.line >= current.line {
-            debug!("SOM TU HALO");
-        }
-
-        // let name = names.get(&node.position());
-        debug!("text: {:?}", text);
-        debug!("range: {:?}", range);
-    }
-
-    for node in node.children() {
-        test(&node, contents, source, current);
-    }
-}
-
 pub async fn handle_did_open(
     document: &TextDocumentItem,
     state: &State,
-    parser: &RwLock<Parser>,
     client: &Client,
+    parser: &RwLock<Parser>,
 ) {
-    let interner = ThreadedInterner::new(); // this should probably be in the backend struct
-    let source_id = SourceIdentifier::dummy(); // is this right?
-                                               // instead of initializing a standolone source we should probably intiliaze a sourcemanager
-                                               // somewhere
-    let source = Source::standalone(&interner, document.uri.path(), document.text.as_str());
+    let interner = ThreadedInterner::new();
+    let source_id = SourceIdentifier::dummy();
+    let source = Source::standalone(&interner, document.uri.path(), document.text.as_str()); // is this right?
+                                                                                             // instead of initializing a standolone source we should probably intiliaze a sourcemanager
+                                                                                             // somewhere
+                                                                                             // source_manager.insert_path(name, document.uri.path().into(), mago_source::SourceCategory::UserDefined);
     let input = Input::new(source_id, document.text.as_bytes());
     let (program, error) = parse(&interner, input);
-    let root_node = Node::Program(&program);
-    // let names = Names::resolve(&interner, &program);
-
-    //just fucking around
-    //move to handle_go_to_definition
-    let current_position = Position::new(10, 42);
-    for child in root_node.children() {
-        test(&child, document.text.as_str(), &source, &current_position);
-    }
-
-    // debug!("{:?}", names);
-
-    // let test = Node::Program(&program);
-    // let node_children = test.children();
-    //
-    // let mut children = Vec::with_capacity(node_children.len());
-    // for child in node_children {
-    //     children.push(child);
-    // }
-    // debug!("Nodes: {:?}", children);
 
     if let Some(e) = error {
         let span = e.span();
@@ -110,14 +58,17 @@ pub async fn handle_did_open(
             .await;
     }
 
-    // let tree = parser
-    //     .write()
-    //     .unwrap()
-    //     .parse(document.text.clone())
-    //     .expect("to parse file");
-    // let uri = document.uri.clone();
-    // state.ast_map.insert(uri.clone(), tree);
-    // state
-    //     .document_map
-    //     .insert(uri.clone(), document.text.clone());
+    state.document_program.insert(document.uri.clone(), program);
+    state
+        .document_map
+        .insert(document.uri.clone(), document.text.clone());
+
+    //todo remove after we ditch tree sitter for mago parser
+    let tree = parser
+        .write()
+        .unwrap()
+        .parse(document.text.clone())
+        .expect("to parse file");
+    let uri = document.uri.clone();
+    state.ast_map.insert(uri.clone(), tree);
 }

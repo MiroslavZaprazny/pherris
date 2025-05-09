@@ -1,13 +1,19 @@
 use std::{path::Path, sync::RwLock};
 
+use mago_ast::Node;
+use mago_interner::ThreadedInterner;
+use mago_source::Source;
+use mago_span::{HasPosition, HasSpan};
 use streaming_iterator::StreamingIterator;
 use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, Url};
-use tree_sitter::{Node, Query, QueryCursor, Tree};
+use tracing::debug;
+use tree_sitter::{Query, QueryCursor, Tree};
 
 use crate::{
     analyzer::{
         parser::Parser,
         query::{named_type_declaration_query, namespace_use_query, variable_declaration_query},
+        tree::get_node_for_position,
         utils::{
             find_nearest_location, get_node_for_point, get_point_from_position,
             get_position_from_point,
@@ -22,10 +28,33 @@ pub fn handle_go_to_definition(
     state: &State,
     parser: &RwLock<Parser>,
 ) -> Option<GotoDefinitionResponse> {
+    let program = state.document_program.get(uri).expect("to get the program");
+    let document = state.document_map.get(uri).expect("to get the document");
     let tree = state.ast_map.get(uri).expect("to get the tree");
 
-    let document = state.document_map.get(uri).expect("to get the document");
+    let source = Source::standalone(&ThreadedInterner::new(), &uri.path(), &document); // todo
+                                                                                       // we
+                                                                                       // probably
+                                                                                       // shouldn't
+                                                                                       // create
+                                                                                       // standalone
+                                                                                       // sources?
 
+    let class_like_node = get_node_for_position(
+        &Node::Program(&program),
+        &document,
+        &source,
+        position,
+        mago_ast::NodeKind::Hint,
+    );
+    if let Some(n) = class_like_node {
+        let location = find_named_type_definition(&n, &document, uri, state, parser, &tree)
+            .expect("to find named type definition");
+
+        return Some(GotoDefinitionResponse::Scalar(location));
+    }
+
+    //todo remove all of this after we ditch tree sitter for mago parser
     let current_point = get_point_from_position(position);
     let current_node = get_node_for_point(&tree, current_point).expect("to get node");
 
@@ -40,37 +69,23 @@ pub fn handle_go_to_definition(
 
             Some(GotoDefinitionResponse::Scalar(location))
         }
-        "named_type"
-        | "use_declaration"
-        | "qualified_name"
-        | "class_constant_access_expression"
-        | "base_clause"
-        | "class_interface_clause"
-        | "object_creation_expression"
-        | "scoped_call_expression" => {
-            let location =
-                find_named_type_definition(&current_node, &document, &tree, uri, state, parser)
-                    .expect("to find named type definition");
-
-            Some(GotoDefinitionResponse::Scalar(location))
-        }
         _ => None,
     }
 }
 
-//TODO move to analyzer crate
-//instead of state we should pass in the path i guess
 fn find_named_type_definition(
     current_node: &Node,
     document: &str,
-    tree: &Tree,
     current_uri: &Url,
     state: &State,
     parser: &RwLock<Parser>,
+    tree: &Tree,
 ) -> Option<Location> {
-    let named_type_name = current_node
-        .utf8_text(document.as_bytes())
-        .expect("to get class name");
+    let name = document
+        [current_node.start_position().offset()..current_node.end_position().offset()]
+        .to_string();
+    debug!("{}", name);
+    debug!("{:?}", current_node);
 
     let query = namespace_use_query().expect("to create query");
     let mut cursor = QueryCursor::new();
@@ -92,30 +107,29 @@ fn find_named_type_definition(
                 continue;
             }
 
-            if fqn.ends_with(format!("\\{}", named_type_name).as_str()) {
+            if fqn.ends_with(format!("\\{}", name).as_str()) {
                 let path = path.unwrap();
 
-                if let Some(location) = get_named_type_declaration_location(
-                    Path::new(path.as_str()),
-                    named_type_name,
-                    parser,
-                ) {
+                if let Some(location) =
+                    get_named_type_declaration_location(Path::new(path.as_str()), &name, parser)
+                {
                     return Some(location);
                 }
             }
         }
     }
 
+    //if there is no use statement try searching the current directory for the class
     // first try to check the current_dir/class_name.php
-    let str_path = &format!("{}/{}.php", current_dir.to_str().unwrap(), named_type_name);
+
+    let str_path = &format!("{}/{}.php", current_dir.to_str().unwrap(), name);
     let path = Path::new(str_path);
     if path.exists() {
-        if let Some(location) = get_named_type_declaration_location(path, named_type_name, parser) {
+        if let Some(location) = get_named_type_declaration_location(path, &name, parser) {
             return Some(location);
         }
     }
 
-    //if there is no use statement try searching the current directory for the class
     let files = std::fs::read_dir(current_dir).expect("to read files");
     for entry in files {
         if entry.is_err() {
@@ -130,8 +144,7 @@ fn find_named_type_definition(
             continue;
         }
 
-        if let Some(location) = get_named_type_declaration_location(&path, named_type_name, parser)
-        {
+        if let Some(location) = get_named_type_declaration_location(&path, &name, parser) {
             return Some(location);
         }
     }
