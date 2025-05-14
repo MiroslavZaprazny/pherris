@@ -24,7 +24,6 @@ pub async fn handle_did_open(
     let source = Source::standalone(&interner, document.uri.path(), document.text.as_str()); // is this right?
                                                                                              // instead of initializing a standolone source we should probably intiliaze a sourcemanager
                                                                                              // somewhere
-                                                                                             // source_manager.insert_path(name, document.uri.path().into(), mago_source::SourceCategory::UserDefined);
     let input = Input::new(source_id, document.text.as_bytes());
     let (program, error) = parse(&interner, input);
 

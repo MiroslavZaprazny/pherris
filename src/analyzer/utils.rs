@@ -1,6 +1,4 @@
-use mago_ast::Program;
 use tower_lsp::lsp_types::{Location, Position};
-use tracing::debug;
 use tree_sitter::{Node, Point, Tree};
 
 pub fn get_point_from_position(position: &Position) -> Point {

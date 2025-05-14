@@ -32,17 +32,16 @@ pub fn handle_go_to_definition(
     let document = state.document_map.get(uri).expect("to get the document");
     let tree = state.ast_map.get(uri).expect("to get the tree");
 
-    let source = Source::standalone(&ThreadedInterner::new(), &uri.path(), &document); // todo
-                                                                                       // we
-                                                                                       // probably
-                                                                                       // shouldn't
-                                                                                       // create
-                                                                                       // standalone
-                                                                                       // sources?
+    let source = Source::standalone(&ThreadedInterner::new(), uri.path(), &document); // todo
+                                                                                      // we
+                                                                                      // probably
+                                                                                      // shouldn't
+                                                                                      // create
+                                                                                      // standalone
+                                                                                      // sources?
 
     let class_like_node = get_node_for_position(
         &Node::Program(&program),
-        &document,
         &source,
         position,
         mago_ast::NodeKind::Hint,
