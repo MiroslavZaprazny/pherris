@@ -129,8 +129,8 @@ mod tests {
         let state = State::new(
             DashMap::default(),
             DashMap::default(),
-            DashMap::default(),
             RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
+            DashMap::default(),
             DashMap::default(),
         );
 

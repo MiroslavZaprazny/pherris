@@ -2,7 +2,7 @@ use dashmap::DashMap;
 use mago_interner::ThreadedInterner;
 use mago_lexer::input::Input;
 use mago_parser::parse;
-use mago_source::{Source, SourceIdentifier};
+use mago_source::SourceIdentifier;
 use pherris::analyzer::parser::Parser;
 use pherris::handlers::request::handle_go_to_definition;
 use pherris::lsp::state::State;
