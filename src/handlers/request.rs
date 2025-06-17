@@ -1,6 +1,6 @@
 use std::{path::Path, sync::RwLock};
 
-use mago_ast::Node;
+use mago_ast::{Node, NodeKind};
 use mago_interner::ThreadedInterner;
 use mago_source::Source;
 use mago_span::{HasPosition, HasSpan};
@@ -40,18 +40,20 @@ pub fn handle_go_to_definition(
                                                                                       // standalone
                                                                                       // sources?
 
-    let class_like_node = get_node_for_position(
-        &Node::Program(&program),
-        &source,
-        position,
-        mago_ast::NodeKind::Hint,
-    );
-    if let Some(n) = class_like_node {
-        let location = find_named_type_definition(&n, &document, uri, state, parser, &tree)
-            .expect("to find named type definition");
+    //not sure if there is some better way of doing this
+    //right now we traverse the whole tree to find the current node
+    let node = get_node_for_position(&Node::Program(&program), &source, position);
+
+    debug!("Node: {:?}", node);
+    if let Some(n) = node {
+        let location = match n.kind() {
+            NodeKind::Hint => find_named_type_definition(&n, &document, uri, state, parser, &tree)
+                .expect("to find named type definition"),
+            _ => todo!("Todo implement node kind {}", n.kind()),
+        };
 
         return Some(GotoDefinitionResponse::Scalar(location));
-    }
+    };
 
     //todo remove all of this after we ditch tree sitter for mago parser
     let current_point = get_point_from_position(position);
