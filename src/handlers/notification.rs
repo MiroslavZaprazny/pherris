@@ -47,7 +47,7 @@ pub async fn handle_did_open(
             Some(DiagnosticSeverity::ERROR),
             None,
             None,
-            format!("{}", e),
+            e.to_string(),
             None,
             None,
         ));
