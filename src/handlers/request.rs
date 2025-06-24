@@ -61,7 +61,7 @@ pub fn handle_go_to_definition(
                     .and_then(|path| {
                         get_named_type_declaration_location(
                             Path::new(path.as_str()),
-                            fqn.split('\\').last().unwrap(),
+                            fqn.split('\\').next_back().unwrap(),
                             parser,
                         )
                     })
