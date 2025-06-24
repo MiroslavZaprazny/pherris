@@ -41,8 +41,7 @@ pub async fn handle_did_open(
             },
         };
 
-        let mut diags = vec![];
-        diags.push(Diagnostic::new(
+        let diags = vec![Diagnostic::new(
             range,
             Some(DiagnosticSeverity::ERROR),
             None,
@@ -50,7 +49,7 @@ pub async fn handle_did_open(
             e.to_string(),
             None,
             None,
-        ));
+        )];
 
         client
             .publish_diagnostics(document.uri.clone(), diags, None)
