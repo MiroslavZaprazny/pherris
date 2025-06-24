@@ -27,6 +27,9 @@ pub fn get_node_for_position<'a>(
         if node.kind() != NodeKind::FunctionLikeParameterList
             && node.kind() != NodeKind::FunctionLikeParameter
             && node.kind() != NodeKind::FunctionLikeReturnTypeHint
+            && node.kind() != NodeKind::Implements
+            && node.kind() != NodeKind::UseItems
+            && node.kind() != NodeKind::UseItemSequence
         {
             return Some(*node);
         }

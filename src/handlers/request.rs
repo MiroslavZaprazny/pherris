@@ -47,8 +47,26 @@ pub fn handle_go_to_definition(
     debug!("Node: {:?}", node);
     if let Some(n) = node {
         let location = match n.kind() {
-            NodeKind::Hint => find_named_type_definition(&n, &document, uri, state, parser, &tree)
-                .expect("to find named type definition"),
+            NodeKind::Hint | NodeKind::Identifier => {
+                find_named_type_definition(&n, &document, uri, state, parser, &tree)
+                    .expect("to find named type definition")
+            }
+            NodeKind::UseItem => {
+                let fqn =
+                    document[n.start_position().offset()..n.end_position().offset()].to_string();
+                debug!("fqn: {}", fqn);
+                state
+                    .class_map
+                    .get(&fqn)
+                    .and_then(|path| {
+                        get_named_type_declaration_location(
+                            Path::new(path.as_str()),
+                            fqn.split('\\').last().unwrap(),
+                            parser,
+                        )
+                    })
+                    .expect("to find use item location")
+            }
             _ => todo!("Todo implement node kind {}", n.kind()),
         };
 
