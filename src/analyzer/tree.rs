@@ -8,22 +8,12 @@ pub fn get_node_for_position<'a>(
     source: &Source,
     needle: &Position,
 ) -> Option<Node<'a>> {
-    let range = Range {
-        start: Position {
-            line: (source.line_number(node.start_position().offset())) as u32,
-            character: (source.column_number(node.start_position().offset())) as u32,
-        },
-        end: Position {
-            line: (source.line_number(node.end_position().offset())) as u32,
-            character: (source.column_number(node.end_position().offset())) as u32,
-        },
-    };
+    let range = get_range(node, source);
 
     if (range.start.line..=range.end.line).contains(&needle.line)
         && (range.start.character..=range.end.character).contains(&needle.character)
     {
-        // maybe we shouldnt skip them but actually parse them later, but we dont really care about
-        // these nodes for now
+        // TODO, dont skip these
         if node.kind() != NodeKind::FunctionLikeParameterList
             && node.kind() != NodeKind::FunctionLikeParameter
             && node.kind() != NodeKind::FunctionLikeReturnTypeHint
@@ -42,4 +32,18 @@ pub fn get_node_for_position<'a>(
     }
 
     None
+}
+
+//move somwhere else?
+pub fn get_range<'a>(node: impl HasSpan, source: &Source) -> Range {
+    Range {
+        start: Position {
+            line: (source.line_number(node.start_position().offset())) as u32,
+            character: (source.column_number(node.start_position().offset())) as u32,
+        },
+        end: Position {
+            line: (source.line_number(node.end_position().offset())) as u32,
+            character: (source.column_number(node.end_position().offset())) as u32,
+        },
+    }
 }

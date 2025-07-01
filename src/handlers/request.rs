@@ -1,11 +1,11 @@
 use std::{path::Path, sync::RwLock};
 
-use mago_ast::{Node, NodeKind};
+use mago_ast::{Node, NodeKind, TraitUse};
 use mago_interner::ThreadedInterner;
 use mago_source::Source;
 use mago_span::{HasPosition, HasSpan};
 use streaming_iterator::StreamingIterator;
-use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, Url};
+use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, Range, Url};
 use tracing::debug;
 use tree_sitter::{Query, QueryCursor, Tree};
 
@@ -13,7 +13,7 @@ use crate::{
     analyzer::{
         parser::Parser,
         query::{named_type_declaration_query, namespace_use_query, variable_declaration_query},
-        tree::get_node_for_position,
+        tree::{get_node_for_position, get_range},
         utils::{
             find_nearest_location, get_node_for_point, get_point_from_position,
             get_position_from_point,
@@ -36,7 +36,6 @@ pub fn handle_go_to_definition(
                                                                                       // we
                                                                                       // probably
                                                                                       // shouldn't
-                                                                                      // create
                                                                                       // standalone
                                                                                       // sources?
 
@@ -46,9 +45,12 @@ pub fn handle_go_to_definition(
 
     debug!("Node: {:?}", node);
     if let Some(n) = node {
+        let name = document[n.start_position().offset()..n.end_position().offset()].to_string();
+        debug!("name: {:?}", name);
+
         let location = match n.kind() {
             NodeKind::Hint | NodeKind::Identifier => {
-                find_named_type_definition(&n, &document, uri, state, parser, &tree)
+                find_named_type_definition(&name, &document, uri, state, parser, &tree)
                     .expect("to find named type definition")
             }
             NodeKind::UseItem => {
@@ -67,6 +69,29 @@ pub fn handle_go_to_definition(
                     })
                     .expect("to find use item location")
             }
+            //TODO shit dont work
+            NodeKind::ClassLikeMember => match n {
+                Node::TraitUse(t) => {
+                    for trait_name in t.trait_names.iter() {
+                        let range = get_range(trait_name, &source);
+
+                        if (range.start.line..=range.end.line).contains(&position.line)
+                            && (range.start.character..=range.end.character)
+                                .contains(&position.character)
+                        {
+                            let name = document[trait_name.start_position().offset()
+                                ..trait_name.end_position().offset()]
+                                .to_string();
+                            debug!("{}", name);
+
+                            find_named_type_definition(&name, &document, uri, state, parser, &tree)
+                                .expect("to find named type definition");
+                        }
+                    }
+                    todo!()
+                }
+                _ => todo!("Todo implement node kind {}", n.kind()),
+            },
             _ => todo!("Todo implement node kind {}", n.kind()),
         };
 
@@ -93,19 +118,13 @@ pub fn handle_go_to_definition(
 }
 
 fn find_named_type_definition(
-    current_node: &Node,
+    name: &str,
     document: &str,
     current_uri: &Url,
     state: &State,
     parser: &RwLock<Parser>,
     tree: &Tree,
 ) -> Option<Location> {
-    let name = document
-        [current_node.start_position().offset()..current_node.end_position().offset()]
-        .to_string();
-    debug!("{}", name);
-    debug!("{:?}", current_node);
-
     let query = namespace_use_query().expect("to create query");
     let mut cursor = QueryCursor::new();
     let mut matches = cursor.matches(&query, tree.root_node(), document.as_bytes());
