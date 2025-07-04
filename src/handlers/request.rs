@@ -1,13 +1,19 @@
 use std::{path::Path, sync::RwLock};
 
+use mago_ast::{ClassLikeMember, Hint, Node, UseItems};
+use mago_interner::ThreadedInterner;
+use mago_source::Source;
+use mago_span::{HasPosition, HasSpan};
 use streaming_iterator::StreamingIterator;
 use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, Url};
-use tree_sitter::{Node, Query, QueryCursor, Tree};
+use tracing::{debug, field::debug};
+use tree_sitter::{Query, QueryCursor, Tree};
 
 use crate::{
     analyzer::{
         parser::Parser,
         query::{named_type_declaration_query, namespace_use_query, variable_declaration_query},
+        tree::{get_node_for_position, get_node_name, get_range, range_contains_position},
         utils::{
             find_nearest_location, get_node_for_point, get_point_from_position,
             get_position_from_point,
@@ -22,10 +28,141 @@ pub fn handle_go_to_definition(
     state: &State,
     parser: &RwLock<Parser>,
 ) -> Option<GotoDefinitionResponse> {
+    let program = state.document_program.get(uri).expect("to get the program");
+    let document = state.document_map.get(uri).expect("to get the document");
     let tree = state.ast_map.get(uri).expect("to get the tree");
 
-    let document = state.document_map.get(uri).expect("to get the document");
+    let source = Source::standalone(&ThreadedInterner::new(), uri.path(), &document); // todo
+                                                                                      // we
+                                                                                      // probably
+                                                                                      // shouldn't
+                                                                                      // standalone
+                                                                                      // sources?
 
+    // move this shit somewhere else
+    let node = get_node_for_position(&Node::Program(&program), &source, position);
+    debug!("Node: {:?}", node);
+    if let Some(n) = node {
+        let name = document[n.start_position().offset()..n.end_position().offset()].to_string();
+        debug!("name: {:?}", name);
+
+        let location = match n {
+            Node::UseItems(use_items) => match use_items {
+                UseItems::Sequence(sequence) => {
+                    let mut out = None;
+
+                    for use_item in sequence.items.iter() {
+                        if range_contains_position(&get_range(use_item, &source), position) {
+                            let fqn = get_node_name(&document, use_item);
+
+                            out = state.class_map.get(&fqn).and_then(|path| {
+                                get_named_type_declaration_location(
+                                    Path::new(path.as_str()),
+                                    fqn.split('\\').next_back().unwrap(),
+                                    parser,
+                                )
+                            })
+                        }
+                    }
+
+                    out
+                }
+                _ => todo!("Todo implement use items variatn {}", use_items),
+            },
+            Node::FunctionLikeReturnTypeHint(return_type) => {
+                let mut out = None;
+                let hint = return_type.hint.clone();
+                debug!("return type hint {:?}", hint);
+
+                if range_contains_position(&get_range(return_type, &source), position) {
+                    match hint {
+                        Hint::Identifier(id) => {
+                            out = find_named_type_definition(
+                                &get_node_name(&document, &id),
+                                &document,
+                                uri,
+                                state,
+                                parser,
+                                &tree,
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+
+                out
+            }
+            Node::FunctionLikeParameterList(param_list) => {
+                let mut out = None;
+
+                for parameter in param_list.parameters.iter() {
+                    let hint = parameter.hint.clone();
+
+                    if let Some(hint) = hint {
+                        if range_contains_position(&get_range(parameter, &source), position) {
+                            match hint {
+                                Hint::Identifier(id) => {
+                                    out = find_named_type_definition(
+                                        &get_node_name(&document, &id),
+                                        &document,
+                                        uri,
+                                        state,
+                                        parser,
+                                        &tree,
+                                    );
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                out
+            }
+            Node::Implements(implements_node) => {
+                let mut out = None;
+                for implements_type in implements_node.types.iter() {
+                    if range_contains_position(&get_range(implements_type, &source), position) {
+                        out = find_named_type_definition(
+                            &get_node_name(&document, &implements_type),
+                            &document,
+                            uri,
+                            state,
+                            parser,
+                            &tree,
+                        );
+                    }
+                }
+                out
+            }
+            Node::ClassLikeMember(class_member_node) => match class_member_node {
+                ClassLikeMember::TraitUse(t) => {
+                    let mut out = None;
+
+                    for trait_name in t.trait_names.iter() {
+                        if range_contains_position(&get_range(trait_name, &source), position) {
+                            out = find_named_type_definition(
+                                &get_node_name(&document, &trait_name),
+                                &document,
+                                uri,
+                                state,
+                                parser,
+                                &tree,
+                            );
+                        }
+                    }
+                    out
+                }
+                _ => todo!("Todo implement class like node {}", n),
+            },
+            _ => todo!("Todo implement node {}", n),
+        };
+
+        if let Some(found) = location {
+            return Some(GotoDefinitionResponse::Scalar(found));
+        }
+    };
+
+    //todo remove all of this after we ditch tree sitter for mago parser
     let current_point = get_point_from_position(position);
     let current_node = get_node_for_point(&tree, current_point).expect("to get node");
 
@@ -40,38 +177,18 @@ pub fn handle_go_to_definition(
 
             Some(GotoDefinitionResponse::Scalar(location))
         }
-        "named_type"
-        | "use_declaration"
-        | "qualified_name"
-        | "class_constant_access_expression"
-        | "base_clause"
-        | "class_interface_clause"
-        | "object_creation_expression"
-        | "scoped_call_expression" => {
-            let location =
-                find_named_type_definition(&current_node, &document, &tree, uri, state, parser)
-                    .expect("to find named type definition");
-
-            Some(GotoDefinitionResponse::Scalar(location))
-        }
         _ => None,
     }
 }
 
-//TODO move to analyzer crate
-//instead of state we should pass in the path i guess
 fn find_named_type_definition(
-    current_node: &Node,
+    name: &str,
     document: &str,
-    tree: &Tree,
     current_uri: &Url,
     state: &State,
     parser: &RwLock<Parser>,
+    tree: &Tree,
 ) -> Option<Location> {
-    let named_type_name = current_node
-        .utf8_text(document.as_bytes())
-        .expect("to get class name");
-
     let query = namespace_use_query().expect("to create query");
     let mut cursor = QueryCursor::new();
     let mut matches = cursor.matches(&query, tree.root_node(), document.as_bytes());
@@ -92,30 +209,29 @@ fn find_named_type_definition(
                 continue;
             }
 
-            if fqn.ends_with(format!("\\{}", named_type_name).as_str()) {
+            if fqn.ends_with(format!("\\{}", name).as_str()) {
                 let path = path.unwrap();
 
-                if let Some(location) = get_named_type_declaration_location(
-                    Path::new(path.as_str()),
-                    named_type_name,
-                    parser,
-                ) {
+                if let Some(location) =
+                    get_named_type_declaration_location(Path::new(path.as_str()), &name, parser)
+                {
                     return Some(location);
                 }
             }
         }
     }
 
+    //if there is no use statement try searching the current directory for the class
     // first try to check the current_dir/class_name.php
-    let str_path = &format!("{}/{}.php", current_dir.to_str().unwrap(), named_type_name);
+
+    let str_path = &format!("{}/{}.php", current_dir.to_str().unwrap(), name);
     let path = Path::new(str_path);
     if path.exists() {
-        if let Some(location) = get_named_type_declaration_location(path, named_type_name, parser) {
+        if let Some(location) = get_named_type_declaration_location(path, &name, parser) {
             return Some(location);
         }
     }
 
-    //if there is no use statement try searching the current directory for the class
     let files = std::fs::read_dir(current_dir).expect("to read files");
     for entry in files {
         if entry.is_err() {
@@ -130,8 +246,7 @@ fn find_named_type_definition(
             continue;
         }
 
-        if let Some(location) = get_named_type_declaration_location(&path, named_type_name, parser)
-        {
+        if let Some(location) = get_named_type_declaration_location(&path, &name, parser) {
             return Some(location);
         }
     }
