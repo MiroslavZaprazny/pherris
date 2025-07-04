@@ -1,19 +1,19 @@
 use std::{path::Path, sync::RwLock};
 
-use mago_ast::{Node, NodeKind, TraitUse};
+use mago_ast::{ClassLikeMember, Hint, Node, UseItems};
 use mago_interner::ThreadedInterner;
 use mago_source::Source;
 use mago_span::{HasPosition, HasSpan};
 use streaming_iterator::StreamingIterator;
-use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, Range, Url};
-use tracing::debug;
+use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, Url};
+use tracing::{debug, field::debug};
 use tree_sitter::{Query, QueryCursor, Tree};
 
 use crate::{
     analyzer::{
         parser::Parser,
         query::{named_type_declaration_query, namespace_use_query, variable_declaration_query},
-        tree::{get_node_for_position, get_range},
+        tree::{get_node_for_position, get_node_name, get_range, range_contains_position},
         utils::{
             find_nearest_location, get_node_for_point, get_point_from_position,
             get_position_from_point,
@@ -39,63 +39,127 @@ pub fn handle_go_to_definition(
                                                                                       // standalone
                                                                                       // sources?
 
-    //not sure if there is some better way of doing this
-    //right now we traverse the whole tree to find the current node
+    // move this shit somewhere else
     let node = get_node_for_position(&Node::Program(&program), &source, position);
-
     debug!("Node: {:?}", node);
     if let Some(n) = node {
         let name = document[n.start_position().offset()..n.end_position().offset()].to_string();
         debug!("name: {:?}", name);
 
-        let location = match n.kind() {
-            NodeKind::Hint | NodeKind::Identifier => {
-                find_named_type_definition(&name, &document, uri, state, parser, &tree)
-                    .expect("to find named type definition")
-            }
-            NodeKind::UseItem => {
-                let fqn =
-                    document[n.start_position().offset()..n.end_position().offset()].to_string();
-                debug!("fqn: {}", fqn);
-                state
-                    .class_map
-                    .get(&fqn)
-                    .and_then(|path| {
-                        get_named_type_declaration_location(
-                            Path::new(path.as_str()),
-                            fqn.split('\\').next_back().unwrap(),
-                            parser,
-                        )
-                    })
-                    .expect("to find use item location")
-            }
-            //TODO shit dont work
-            NodeKind::ClassLikeMember => match n {
-                Node::TraitUse(t) => {
-                    for trait_name in t.trait_names.iter() {
-                        let range = get_range(trait_name, &source);
+        let location = match n {
+            Node::UseItems(use_items) => match use_items {
+                UseItems::Sequence(sequence) => {
+                    let mut out = None;
 
-                        if (range.start.line..=range.end.line).contains(&position.line)
-                            && (range.start.character..=range.end.character)
-                                .contains(&position.character)
-                        {
-                            let name = document[trait_name.start_position().offset()
-                                ..trait_name.end_position().offset()]
-                                .to_string();
-                            debug!("{}", name);
+                    for use_item in sequence.items.iter() {
+                        if range_contains_position(&get_range(use_item, &source), position) {
+                            let fqn = get_node_name(&document, use_item);
 
-                            find_named_type_definition(&name, &document, uri, state, parser, &tree)
-                                .expect("to find named type definition");
+                            out = state.class_map.get(&fqn).and_then(|path| {
+                                get_named_type_declaration_location(
+                                    Path::new(path.as_str()),
+                                    fqn.split('\\').next_back().unwrap(),
+                                    parser,
+                                )
+                            })
                         }
                     }
-                    todo!()
+
+                    out
                 }
-                _ => todo!("Todo implement node kind {}", n.kind()),
+                _ => todo!("Todo implement use items variatn {}", use_items),
             },
-            _ => todo!("Todo implement node kind {}", n.kind()),
+            Node::FunctionLikeReturnTypeHint(return_type) => {
+                let mut out = None;
+                let hint = return_type.hint.clone();
+                debug!("return type hint {:?}", hint);
+
+                if range_contains_position(&get_range(return_type, &source), position) {
+                    match hint {
+                        Hint::Identifier(id) => {
+                            out = find_named_type_definition(
+                                &get_node_name(&document, &id),
+                                &document,
+                                uri,
+                                state,
+                                parser,
+                                &tree,
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+
+                out
+            }
+            Node::FunctionLikeParameterList(param_list) => {
+                let mut out = None;
+
+                for parameter in param_list.parameters.iter() {
+                    let hint = parameter.hint.clone();
+
+                    if let Some(hint) = hint {
+                        if range_contains_position(&get_range(parameter, &source), position) {
+                            match hint {
+                                Hint::Identifier(id) => {
+                                    out = find_named_type_definition(
+                                        &get_node_name(&document, &id),
+                                        &document,
+                                        uri,
+                                        state,
+                                        parser,
+                                        &tree,
+                                    );
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                out
+            }
+            Node::Implements(implements_node) => {
+                let mut out = None;
+                for implements_type in implements_node.types.iter() {
+                    if range_contains_position(&get_range(implements_type, &source), position) {
+                        out = find_named_type_definition(
+                            &get_node_name(&document, &implements_type),
+                            &document,
+                            uri,
+                            state,
+                            parser,
+                            &tree,
+                        );
+                    }
+                }
+                out
+            }
+            Node::ClassLikeMember(class_member_node) => match class_member_node {
+                ClassLikeMember::TraitUse(t) => {
+                    let mut out = None;
+
+                    for trait_name in t.trait_names.iter() {
+                        if range_contains_position(&get_range(trait_name, &source), position) {
+                            out = find_named_type_definition(
+                                &get_node_name(&document, &trait_name),
+                                &document,
+                                uri,
+                                state,
+                                parser,
+                                &tree,
+                            );
+                        }
+                    }
+                    out
+                }
+                _ => todo!("Todo implement class like node {}", n),
+            },
+            _ => todo!("Todo implement node {}", n),
         };
 
-        return Some(GotoDefinitionResponse::Scalar(location));
+        if let Some(found) = location {
+            return Some(GotoDefinitionResponse::Scalar(found));
+        }
     };
 
     //todo remove all of this after we ditch tree sitter for mago parser
