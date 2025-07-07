@@ -1,6 +1,8 @@
 use std::{path::Path, sync::RwLock};
 
-use mago_ast::{ClassLikeMember, Hint, Node, Property, UseItems};
+use mago_ast::{
+    Access, ClassConstantAccess, ClassLikeMember, Expression, Hint, Node, Property, UseItems,
+};
 use mago_interner::ThreadedInterner;
 use mago_source::Source;
 use mago_span::{HasPosition, HasSpan};
@@ -86,13 +88,57 @@ pub fn handle_go_to_definition(
                 })
             }
             Node::FunctionLikeParameter(parameter) => {
-                if let Some(ref hint) = parameter.hint {
+                let param_hint_result = if let Some(ref hint) = parameter.hint {
                     find_hint_definition(
                         hint, &document, state, parser, &tree, uri, &source, position,
                     )
                 } else {
                     None
-                }
+                };
+
+                param_hint_result.or_else(|| {
+                    if let Some(ref default_value) = parameter.default_value {
+                        match &default_value.value {
+                            Expression::Instantiation(instantiation) => {
+                                if range_contains_position(
+                                    &get_range(&instantiation.class, &source),
+                                    position,
+                                ) {
+                                    find_named_type_definition(
+                                        &get_node_name(&document, &instantiation.class),
+                                        &document,
+                                        uri,
+                                        state,
+                                        parser,
+                                        &tree,
+                                    )
+                                } else {
+                                    None
+                                }
+                            }
+                            Expression::Access(Access::ClassConstant(class_constant)) => {
+                                if range_contains_position(
+                                    &get_range(&class_constant.class, &source),
+                                    position,
+                                ) {
+                                    find_named_type_definition(
+                                        &get_node_name(&document, &class_constant.class),
+                                        &document,
+                                        uri,
+                                        state,
+                                        parser,
+                                        &tree,
+                                    )
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    }
+                })
             }
             Node::Identifier(id) => find_named_type_definition(
                 &get_node_name(&document, id),
