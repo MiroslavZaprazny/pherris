@@ -64,7 +64,7 @@ pub fn handle_go_to_definition(
             }
             Node::FunctionLikeReturnTypeHint(return_type) => match &return_type.hint {
                 Hint::Identifier(id) => find_named_type_definition(
-                    &get_node_name(&document, &id),
+                    &get_node_name(&document, id),
                     &document,
                     uri,
                     state,
@@ -231,26 +231,26 @@ fn find_hint_definition(
     source: &Source,
     position: &Position,
 ) -> Option<Location> {
-    if range_contains_position(&get_range(hint, &source), position) == false {
+    if !range_contains_position(&get_range(hint, source), position) {
         return None;
     }
 
     match hint {
         Hint::Identifier(id) => find_named_type_definition(
-            &get_node_name(&document, &id),
-            &document,
+            &get_node_name(document, id),
+            document,
             uri,
             state,
             parser,
-            &tree,
+            tree,
         ),
         Hint::Nullable(nullable_hint) => find_named_type_definition(
-            &get_node_name(&document, &nullable_hint.hint),
-            &document,
+            &get_node_name(document, &nullable_hint.hint),
+            document,
             uri,
             state,
             parser,
-            &tree,
+            tree,
         ),
         _ => None,
     }
