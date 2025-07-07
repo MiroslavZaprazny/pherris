@@ -1,6 +1,6 @@
 use std::{path::Path, sync::RwLock};
 
-use mago_ast::{ClassLikeMember, Hint, Node, UseItems};
+use mago_ast::{function_like::parameter, ClassLikeMember, Hint, Identifier, Node, UseItems};
 use mago_interner::ThreadedInterner;
 use mago_source::Source;
 use mago_span::{HasPosition, HasSpan};
@@ -48,113 +48,202 @@ pub fn handle_go_to_definition(
 
         let location = match n {
             Node::UseItems(use_items) => match use_items {
-                UseItems::Sequence(sequence) => {
-                    let mut out = None;
-
-                    for use_item in sequence.items.iter() {
-                        if range_contains_position(&get_range(use_item, &source), position) {
-                            let fqn = get_node_name(&document, use_item);
-
-                            out = state.class_map.get(&fqn).and_then(|path| {
-                                get_named_type_declaration_location(
-                                    Path::new(path.as_str()),
-                                    fqn.split('\\').next_back().unwrap(),
-                                    parser,
-                                )
-                            })
-                        }
+                UseItems::Sequence(sequence) => sequence.items.iter().find_map(|use_item| {
+                    if range_contains_position(&get_range(use_item, &source), position) {
+                        let fqn = get_node_name(&document, use_item);
+                        let path = state.class_map.get(&fqn);
+                        get_named_type_declaration_location(
+                            Path::new(path.unwrap().as_str()),
+                            fqn.split('\\').next_back().unwrap(),
+                            parser,
+                        )
+                    } else {
+                        None
                     }
-
-                    out
-                }
-                _ => todo!("Todo implement use items variatn {}", use_items),
+                }),
+                _ => None,
             },
             Node::FunctionLikeReturnTypeHint(return_type) => {
-                let mut out = None;
                 let hint = return_type.hint.clone();
-                debug!("return type hint {:?}", hint);
-
                 if range_contains_position(&get_range(return_type, &source), position) {
                     match hint {
-                        Hint::Identifier(id) => {
-                            out = find_named_type_definition(
+                        Hint::Identifier(id) => find_named_type_definition(
+                            &get_node_name(&document, &id),
+                            &document,
+                            uri,
+                            state,
+                            parser,
+                            &tree,
+                        ),
+                        Hint::Nullable(_) => None,
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            }
+            Node::FunctionLikeParameterList(param_list) => {
+                param_list.parameters.iter().find_map(|parameter| {
+                    if let Some(hint) = parameter.hint.clone() {
+                        if range_contains_position(&get_range(parameter, &source), position) {
+                            match hint {
+                                Hint::Identifier(id) => find_named_type_definition(
+                                    &get_node_name(&document, &id),
+                                    &document,
+                                    uri,
+                                    state,
+                                    parser,
+                                    &tree,
+                                ),
+                                Hint::Nullable(_) => None,
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+            }
+            Node::FunctionLikeParameter(parameter) => {
+                if let Some(hint) = parameter.hint.clone() {
+                    if range_contains_position(&get_range(parameter, &source), position) {
+                        match hint {
+                            Hint::Identifier(id) => find_named_type_definition(
                                 &get_node_name(&document, &id),
                                 &document,
                                 uri,
                                 state,
                                 parser,
                                 &tree,
-                            );
+                            ),
+                            Hint::Nullable(_) => None,
+                            _ => None,
                         }
-                        _ => {}
+                    } else {
+                        None
                     }
+                } else {
+                    None
                 }
-
-                out
             }
-            Node::FunctionLikeParameterList(param_list) => {
-                let mut out = None;
-
-                for parameter in param_list.parameters.iter() {
-                    let hint = parameter.hint.clone();
-
-                    if let Some(hint) = hint {
-                        if range_contains_position(&get_range(parameter, &source), position) {
-                            match hint {
-                                Hint::Identifier(id) => {
-                                    out = find_named_type_definition(
-                                        &get_node_name(&document, &id),
-                                        &document,
-                                        uri,
-                                        state,
-                                        parser,
-                                        &tree,
-                                    );
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                }
-                out
-            }
+            Node::Identifier(id) => find_named_type_definition(
+                &get_node_name(&document, &id),
+                &document,
+                uri,
+                state,
+                parser,
+                &tree,
+            ),
             Node::Implements(implements_node) => {
-                let mut out = None;
-                for implements_type in implements_node.types.iter() {
+                implements_node.types.iter().find_map(|implements_type| {
                     if range_contains_position(&get_range(implements_type, &source), position) {
-                        out = find_named_type_definition(
+                        find_named_type_definition(
                             &get_node_name(&document, &implements_type),
                             &document,
                             uri,
                             state,
                             parser,
                             &tree,
-                        );
+                        )
+                    } else {
+                        None
                     }
-                }
-                out
+                })
             }
+            Node::Extends(extends) => extends.types.iter().find_map(|extends_type| {
+                if range_contains_position(&get_range(extends_type, &source), position) {
+                    find_named_type_definition(
+                        &get_node_name(&document, &extends_type),
+                        &document,
+                        uri,
+                        state,
+                        parser,
+                        &tree,
+                    )
+                } else {
+                    None
+                }
+            }),
             Node::ClassLikeMember(class_member_node) => match class_member_node {
-                ClassLikeMember::TraitUse(t) => {
-                    let mut out = None;
-
-                    for trait_name in t.trait_names.iter() {
+                ClassLikeMember::TraitUse(trait_use) => {
+                    trait_use.trait_names.iter().find_map(|trait_name| {
                         if range_contains_position(&get_range(trait_name, &source), position) {
-                            out = find_named_type_definition(
+                            find_named_type_definition(
                                 &get_node_name(&document, &trait_name),
                                 &document,
                                 uri,
                                 state,
                                 parser,
                                 &tree,
-                            );
+                            )
+                        } else {
+                            None
                         }
-                    }
-                    out
+                    })
                 }
-                _ => todo!("Todo implement class like node {}", n),
+                ClassLikeMember::Method(method) => {
+                    let return_type_result =
+                        if let Some(return_type) = method.return_type_hint.clone() {
+                            match return_type.hint {
+                                Hint::Identifier(id) => find_named_type_definition(
+                                    &get_node_name(&document, &id),
+                                    &document,
+                                    uri,
+                                    state,
+                                    parser,
+                                    &tree,
+                                ),
+                                Hint::Nullable(nullable_hint) => find_named_type_definition(
+                                    &get_node_name(&document, &nullable_hint.hint),
+                                    &document,
+                                    uri,
+                                    state,
+                                    parser,
+                                    &tree,
+                                ),
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        };
+
+                    return_type_result.or_else(|| {
+                        method
+                            .parameter_list
+                            .parameters
+                            .iter()
+                            .find_map(|parameter| {
+                                if let Some(hint) = parameter.hint.clone() {
+                                    debug!("hint {:?}", hint);
+                                    if range_contains_position(
+                                        &get_range(parameter, &source),
+                                        position,
+                                    ) {
+                                        match hint {
+                                            Hint::Identifier(id) => find_named_type_definition(
+                                                &get_node_name(&document, &id),
+                                                &document,
+                                                uri,
+                                                state,
+                                                parser,
+                                                &tree,
+                                            ),
+                                            _ => None,
+                                        }
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            })
+                    })
+                }
+                _ => None,
             },
-            _ => todo!("Todo implement node {}", n),
+            _ => None,
         };
 
         if let Some(found) = location {
