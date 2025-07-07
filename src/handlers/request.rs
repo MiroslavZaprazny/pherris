@@ -1,6 +1,6 @@
 use std::{path::Path, sync::RwLock};
 
-use mago_ast::{ClassLikeMember, Hint, Node, UseItems};
+use mago_ast::{ClassLikeMember, Hint, Node, Property, UseItems};
 use mago_interner::ThreadedInterner;
 use mago_source::Source;
 use mago_span::{HasPosition, HasSpan};
@@ -39,7 +39,7 @@ pub fn handle_go_to_definition(
                                                                                       // standalone
                                                                                       // sources?
 
-    // move this shit somewhere else
+    // move to somewhere else
     let node = get_node_for_position(&Node::Program(&program), &source, position);
     debug!("Node: {:?}", node);
     if let Some(n) = node {
@@ -62,67 +62,34 @@ pub fn handle_go_to_definition(
                     }
                 })
             }
-            Node::FunctionLikeReturnTypeHint(return_type) => {
-                let hint = return_type.hint.clone();
-                if range_contains_position(&get_range(return_type, &source), position) {
-                    match hint {
-                        Hint::Identifier(id) => find_named_type_definition(
-                            &get_node_name(&document, &id),
-                            &document,
-                            uri,
-                            state,
-                            parser,
-                            &tree,
-                        ),
-                        Hint::Nullable(_) => None,
-                        _ => None,
-                    }
-                } else {
-                    None
-                }
-            }
+            Node::FunctionLikeReturnTypeHint(return_type) => match &return_type.hint {
+                Hint::Identifier(id) => find_named_type_definition(
+                    &get_node_name(&document, &id),
+                    &document,
+                    uri,
+                    state,
+                    parser,
+                    &tree,
+                ),
+                Hint::Nullable(_) => None,
+                _ => None,
+            },
             Node::FunctionLikeParameterList(param_list) => {
                 param_list.parameters.iter().find_map(|parameter| {
-                    if let Some(hint) = parameter.hint.clone() {
-                        if range_contains_position(&get_range(parameter, &source), position) {
-                            match hint {
-                                Hint::Identifier(id) => find_named_type_definition(
-                                    &get_node_name(&document, &id),
-                                    &document,
-                                    uri,
-                                    state,
-                                    parser,
-                                    &tree,
-                                ),
-                                Hint::Nullable(_) => None,
-                                _ => None,
-                            }
-                        } else {
-                            None
-                        }
+                    if let Some(ref hint) = parameter.hint {
+                        find_hint_definition(
+                            hint, &document, state, parser, &tree, uri, &source, position,
+                        )
                     } else {
                         None
                     }
                 })
             }
             Node::FunctionLikeParameter(parameter) => {
-                if let Some(hint) = parameter.hint.clone() {
-                    if range_contains_position(&get_range(parameter, &source), position) {
-                        match hint {
-                            Hint::Identifier(id) => find_named_type_definition(
-                                &get_node_name(&document, &id),
-                                &document,
-                                uri,
-                                state,
-                                parser,
-                                &tree,
-                            ),
-                            Hint::Nullable(_) => None,
-                            _ => None,
-                        }
-                    } else {
-                        None
-                    }
+                if let Some(ref hint) = parameter.hint {
+                    find_hint_definition(
+                        hint, &document, state, parser, &tree, uri, &source, position,
+                    )
                 } else {
                     None
                 }
@@ -183,30 +150,21 @@ pub fn handle_go_to_definition(
                     })
                 }
                 ClassLikeMember::Method(method) => {
-                    let return_type_result =
-                        if let Some(return_type) = method.return_type_hint.clone() {
-                            match return_type.hint {
-                                Hint::Identifier(id) => find_named_type_definition(
-                                    &get_node_name(&document, &id),
-                                    &document,
-                                    uri,
-                                    state,
-                                    parser,
-                                    &tree,
-                                ),
-                                Hint::Nullable(nullable_hint) => find_named_type_definition(
-                                    &get_node_name(&document, &nullable_hint.hint),
-                                    &document,
-                                    uri,
-                                    state,
-                                    parser,
-                                    &tree,
-                                ),
-                                _ => None,
-                            }
-                        } else {
-                            None
-                        };
+                    let return_type_result = if let Some(ref return_type) = method.return_type_hint
+                    {
+                        find_hint_definition(
+                            &return_type.hint,
+                            &document,
+                            state,
+                            parser,
+                            &tree,
+                            uri,
+                            &source,
+                            position,
+                        )
+                    } else {
+                        None
+                    };
 
                     return_type_result.or_else(|| {
                         method
@@ -214,31 +172,25 @@ pub fn handle_go_to_definition(
                             .parameters
                             .iter()
                             .find_map(|parameter| {
-                                if let Some(hint) = parameter.hint.clone() {
-                                    debug!("hint {:?}", hint);
-                                    if range_contains_position(
-                                        &get_range(parameter, &source),
+                                if let Some(ref hint) = parameter.hint {
+                                    find_hint_definition(
+                                        hint, &document, state, parser, &tree, uri, &source,
                                         position,
-                                    ) {
-                                        match hint {
-                                            Hint::Identifier(id) => find_named_type_definition(
-                                                &get_node_name(&document, &id),
-                                                &document,
-                                                uri,
-                                                state,
-                                                parser,
-                                                &tree,
-                                            ),
-                                            _ => None,
-                                        }
-                                    } else {
-                                        None
-                                    }
+                                    )
                                 } else {
                                     None
                                 }
                             })
                     })
+                }
+                ClassLikeMember::Property(Property::Plain(property)) => {
+                    if let Some(ref hint) = property.hint {
+                        find_hint_definition(
+                            hint, &document, state, parser, &tree, uri, &source, position,
+                        )
+                    } else {
+                        None
+                    }
                 }
                 _ => None,
             },
@@ -265,6 +217,41 @@ pub fn handle_go_to_definition(
 
             Some(GotoDefinitionResponse::Scalar(location))
         }
+        _ => None,
+    }
+}
+
+fn find_hint_definition(
+    hint: &Hint,
+    document: &str,
+    state: &State,
+    parser: &RwLock<Parser>,
+    tree: &Tree,
+    uri: &Url,
+    source: &Source,
+    position: &Position,
+) -> Option<Location> {
+    if range_contains_position(&get_range(hint, &source), position) == false {
+        return None;
+    }
+
+    match hint {
+        Hint::Identifier(id) => find_named_type_definition(
+            &get_node_name(&document, &id),
+            &document,
+            uri,
+            state,
+            parser,
+            &tree,
+        ),
+        Hint::Nullable(nullable_hint) => find_named_type_definition(
+            &get_node_name(&document, &nullable_hint.hint),
+            &document,
+            uri,
+            state,
+            parser,
+            &tree,
+        ),
         _ => None,
     }
 }
@@ -357,7 +344,7 @@ fn get_named_type_declaration_location(
     let tree = parser
         .write()
         .unwrap()
-        .parse(content.clone())
+        .parse(content.as_str())
         .expect("to parse file");
 
     if let Some(location) = capture_named_type_location(

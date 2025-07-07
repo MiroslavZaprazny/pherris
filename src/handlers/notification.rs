@@ -67,6 +67,5 @@ pub async fn handle_did_open(
         .unwrap()
         .parse(document.text.clone())
         .expect("to parse file");
-    let uri = document.uri.clone();
-    state.ast_map.insert(uri.clone(), tree);
+    state.ast_map.insert(document.uri.clone(), tree);
 }

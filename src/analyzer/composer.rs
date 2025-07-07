@@ -25,7 +25,7 @@ pub fn load_autoload_class_map(parser: &RwLock<Parser>, state: &State) {
     let tree = parser
         .write()
         .unwrap()
-        .parse(contents.clone())
+        .parse(&contents)
         .expect("to parse file");
     let query = Query::new(
         &tree_sitter_php::LANGUAGE_PHP.into(),
