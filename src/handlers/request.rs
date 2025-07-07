@@ -1,12 +1,12 @@
 use std::{path::Path, sync::RwLock};
 
-use mago_ast::{function_like::parameter, ClassLikeMember, Hint, Identifier, Node, UseItems};
+use mago_ast::{ClassLikeMember, Hint, Node, UseItems};
 use mago_interner::ThreadedInterner;
 use mago_source::Source;
 use mago_span::{HasPosition, HasSpan};
 use streaming_iterator::StreamingIterator;
 use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, Url};
-use tracing::{debug, field::debug};
+use tracing::debug;
 use tree_sitter::{Query, QueryCursor, Tree};
 
 use crate::{
@@ -47,8 +47,8 @@ pub fn handle_go_to_definition(
         debug!("name: {:?}", name);
 
         let location = match n {
-            Node::UseItems(use_items) => match use_items {
-                UseItems::Sequence(sequence) => sequence.items.iter().find_map(|use_item| {
+            Node::UseItems(UseItems::Sequence(sequence)) => {
+                sequence.items.iter().find_map(|use_item| {
                     if range_contains_position(&get_range(use_item, &source), position) {
                         let fqn = get_node_name(&document, use_item);
                         let path = state.class_map.get(&fqn);
@@ -60,9 +60,8 @@ pub fn handle_go_to_definition(
                     } else {
                         None
                     }
-                }),
-                _ => None,
-            },
+                })
+            }
             Node::FunctionLikeReturnTypeHint(return_type) => {
                 let hint = return_type.hint.clone();
                 if range_contains_position(&get_range(return_type, &source), position) {
@@ -129,7 +128,7 @@ pub fn handle_go_to_definition(
                 }
             }
             Node::Identifier(id) => find_named_type_definition(
-                &get_node_name(&document, &id),
+                &get_node_name(&document, id),
                 &document,
                 uri,
                 state,
@@ -140,7 +139,7 @@ pub fn handle_go_to_definition(
                 implements_node.types.iter().find_map(|implements_type| {
                     if range_contains_position(&get_range(implements_type, &source), position) {
                         find_named_type_definition(
-                            &get_node_name(&document, &implements_type),
+                            &get_node_name(&document, implements_type),
                             &document,
                             uri,
                             state,
@@ -155,7 +154,7 @@ pub fn handle_go_to_definition(
             Node::Extends(extends) => extends.types.iter().find_map(|extends_type| {
                 if range_contains_position(&get_range(extends_type, &source), position) {
                     find_named_type_definition(
-                        &get_node_name(&document, &extends_type),
+                        &get_node_name(&document, extends_type),
                         &document,
                         uri,
                         state,
@@ -171,7 +170,7 @@ pub fn handle_go_to_definition(
                     trait_use.trait_names.iter().find_map(|trait_name| {
                         if range_contains_position(&get_range(trait_name, &source), position) {
                             find_named_type_definition(
-                                &get_node_name(&document, &trait_name),
+                                &get_node_name(&document, trait_name),
                                 &document,
                                 uri,
                                 state,
@@ -302,7 +301,7 @@ fn find_named_type_definition(
                 let path = path.unwrap();
 
                 if let Some(location) =
-                    get_named_type_declaration_location(Path::new(path.as_str()), &name, parser)
+                    get_named_type_declaration_location(Path::new(path.as_str()), name, parser)
                 {
                     return Some(location);
                 }
@@ -316,7 +315,7 @@ fn find_named_type_definition(
     let str_path = &format!("{}/{}.php", current_dir.to_str().unwrap(), name);
     let path = Path::new(str_path);
     if path.exists() {
-        if let Some(location) = get_named_type_declaration_location(path, &name, parser) {
+        if let Some(location) = get_named_type_declaration_location(path, name, parser) {
             return Some(location);
         }
     }
@@ -335,7 +334,7 @@ fn find_named_type_definition(
             continue;
         }
 
-        if let Some(location) = get_named_type_declaration_location(&path, &name, parser) {
+        if let Some(location) = get_named_type_declaration_location(&path, name, parser) {
             return Some(location);
         }
     }
