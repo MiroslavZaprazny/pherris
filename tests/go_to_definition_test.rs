@@ -1,4 +1,8 @@
 use dashmap::DashMap;
+use mago_interner::ThreadedInterner;
+use mago_lexer::input::Input;
+use mago_parser::parse;
+use mago_source::SourceIdentifier;
 use pherris::analyzer::parser::Parser;
 use pherris::handlers::request::handle_go_to_definition;
 use pherris::lsp::state::State;
@@ -664,11 +668,19 @@ fn setup_test_environment(
         );
     }
 
+    let interner = ThreadedInterner::new();
+    let source_id = SourceIdentifier::dummy();
+    let input = Input::new(source_id, main_content.as_bytes());
+    let (program, _) = parse(&interner, input);
+    let document_program = DashMap::new();
+    document_program.insert(target_uri.clone(), program);
+
     let state = State::new(
-        ast_map,
+        document_program,
         document_map,
         RwLock::new(String::from(temp_dir_path.to_str().unwrap())),
         class_map,
+        ast_map,
     );
 
     prepare_php_file(temp_dir_path, main_content);

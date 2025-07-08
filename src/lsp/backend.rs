@@ -8,14 +8,12 @@ use tower_lsp::lsp_types::*;
 use tower_lsp::Client;
 use tower_lsp::LanguageServer;
 
-use super::config::InitializeOptions;
 use super::state::State;
 
 pub struct Backend {
     pub client: Client,
     pub parser: RwLock<Parser>,
     pub state: State,
-    pub options: RwLock<InitializeOptions>,
 }
 
 #[tower_lsp::async_trait]
@@ -26,13 +24,6 @@ impl LanguageServer for Backend {
             *guard = String::from(root_uri.path());
         }
         load_autoload_class_map(&self.parser, &self.state);
-
-        if let Some(init_options) = params.initialization_options {
-            if let Ok(options) = serde_json::from_value::<InitializeOptions>(init_options) {
-                let mut guard = self.options.write().unwrap();
-                *guard = options
-            }
-        }
 
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
@@ -59,7 +50,13 @@ impl LanguageServer for Backend {
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        handle_did_open(&params.text_document, &self.state, &self.parser).await
+        handle_did_open(
+            &params.text_document,
+            &self.state,
+            &self.client,
+            &self.parser,
+        )
+        .await
     }
 
     async fn goto_definition(

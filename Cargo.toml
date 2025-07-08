@@ -7,8 +7,13 @@ edition = "2021"
 
 [dependencies]
 dashmap = "6.1.0"
-serde = "1.0.218"
-serde_json = "1.0.140"
+mago-ast = "0.22.1"
+mago-interner = "0.22.1"
+mago-lexer = "0.22.1"
+mago-names = "0.22.1"
+mago-parser = "0.22.1"
+mago-source = "0.22.1"
+mago-span = "0.22.1"
 streaming-iterator = "0.1.9"
 tempfile = "3.15.0"
 tokio = { version = "1.42.0", features = ["full"] }
